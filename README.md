@@ -1,2 +1,15 @@
-# pychc
-A library for certified CHC solving
+# pyCHC: A library for certified CHC solving
+
+## Installation
+
+Install `pySMT` module
+```
+pip install -r requirements
+```
+
+Install some SMT solvers from `pySMT`
+```
+python -m pysmt install --z3 --msat --confirm-agreement
+```
+
+
