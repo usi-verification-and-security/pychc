@@ -4,7 +4,7 @@
 
 Install `pySMT` module
 ```
-pip install -r requirements
+pip install -r requirements.txt
 ```
 
 Install some SMT solvers from `pySMT`
