@@ -6,6 +6,7 @@ from typing import Optional
 from pychc.solvers.chc_witness import CHCWitness, CHCStatus
 from pychc.chc_system import CHCSystem
 
+
 class CHCSolver(ABC):
     """
     Abstract base class for CHC solvers.
@@ -18,7 +19,7 @@ class CHCSolver(ABC):
         :param chc_system: CHC system to solve
         """
 
-        self.system = chc_system
+        self.system: CHCSystem = chc_system
         self._status: Optional[CHCStatus] = None
         self._witness: Optional[CHCWitness] = None
 

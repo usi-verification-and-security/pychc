@@ -49,6 +49,7 @@ sys.serialize(tmp)
 print("written to:", tmp.resolve())
 
 # TODO: use a factory
+# Note: this requires Golem to be installed and accessible in PATH
 solver = GolemSolver(sys)
 
 status = solver.solve(get_witness=True)

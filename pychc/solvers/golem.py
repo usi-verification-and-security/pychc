@@ -1,6 +1,6 @@
-'''
+"""
 Golem instance of CHCSolver
-'''
+"""
 
 from __future__ import annotations
 
@@ -19,6 +19,7 @@ from pysmt.typing import BOOL
 from pychc.chc_system import CHCSystem
 from pychc.solvers.chc_witness import CHCStatus, CHCWitness, SatWitness
 from pychc.solvers.chc_solver import CHCSolver
+from pychc.exceptions import PyCHCInvalidResultException, PyCHCSolverException
 
 
 class GolemSolver(CHCSolver):
@@ -28,6 +29,7 @@ class GolemSolver(CHCSolver):
 
     def __init__(self, chc_system: CHCSystem, binary_path: Optional[Path] = None):
         from shutil import which
+
         super().__init__(chc_system)
         self.options = GolemOptions()
 
@@ -37,12 +39,10 @@ class GolemSolver(CHCSolver):
         else:
             solver_path = which(GolemSolver.NAME)
         if not solver_path:
-            raise RuntimeError(
-                f"Golem executable not found"
-            )
+            raise PyCHCSolverException(f"Golem executable not found")
         self._solver_path = Path(solver_path)
         if not self._solver_path.is_file():
-            raise FileNotFoundError(
+            raise PyCHCSolverException(
                 f"Golem executable not found at: {self._solver_path}"
             )
 
@@ -53,7 +53,7 @@ class GolemSolver(CHCSolver):
 
         if get_witness:
             self.options.enable_print_witness(True)
-        
+
         args_extra = self.options.to_array()
 
         with tempfile.NamedTemporaryFile("w", suffix=".smt2") as input_path:
@@ -66,7 +66,7 @@ class GolemSolver(CHCSolver):
                 raw_output = (err.stdout or "") + (err.stderr or "")
                 logging.error(f"Golem execution failed: {raw_output}")
                 self._status = CHCStatus.UNKNOWN
-                return self._status
+                raise PyCHCSolverException(f"Golem execution failed")
 
             raw_output = (proc.stdout or "").strip()
 
@@ -85,7 +85,6 @@ class GolemSolver(CHCSolver):
             return self._status
 
     def get_witness(self) -> CHCWitness:
-        # TODO Check that a witness is available and valid
         return self._witness
 
     def decide_result(self, output: str) -> CHCStatus:
@@ -104,6 +103,7 @@ class GolemSolver(CHCSolver):
         multiple `define-fun`. Stores each definition body as a pysmt formula.
         """
         from io import StringIO
+
         lines = output.splitlines()
         if not lines:
             return None
@@ -117,7 +117,7 @@ class GolemSolver(CHCSolver):
             args = getattr(decl, "args", [])
             if len(args) == 4:
                 if args[2] != BOOL:
-                    raise Exception("Cannot parse: \n" + smt_text)
+                    raise PyCHCInvalidResultException("Cannot parse: \n" + smt_text)
                 name = args[0]
                 interpretation = FunctionInterpretation(
                     formal_params=args[1], function_body=args[3], allow_free_vars=False
@@ -126,8 +126,13 @@ class GolemSolver(CHCSolver):
             else:
                 logging.warning(f"Skipping malformed declaration? {decl}")
 
-        # TODO: check that predicate names match
-        return SatWitness(predicates)
+        witness = SatWitness(predicates)
+        if not self.system.check_witness_consistency(witness):
+            raise PyCHCInvalidResultException(
+                "Extracted model is not consistent with the CHC system predicates."
+            )
+
+        return witness
 
     def extract_unsat_proof(self, output: str) -> Optional[UnsatWitness]:
         """Extract an UNSAT certificate/proof from solver output."""
