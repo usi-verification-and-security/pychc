@@ -16,9 +16,17 @@ class PyCHCInternalException(PyCHCException):
     """
 
 
+class PyCHCInvalidSystemException(PyCHCException):
+    """
+    Exception for invalid CHC systems
+
+    """
+
+
 class PyCHCInvalidResultException(PyCHCException):
     """
     Exception for invalid objects
+
     """
 
 

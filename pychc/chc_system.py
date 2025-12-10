@@ -10,17 +10,17 @@ from pysmt.fnode import FNode
 from pysmt.smtlib.printers import SmtPrinter
 from pysmt.typing import BOOL
 
+from pychc.exceptions import PyCHCInvalidSystemException
 from pychc.solvers.chc_witness import SatWitness, UnsatWitness, CHCWitness
 
 
 class CHCSystem:
-    def __init__(self):
-        self.logic: Logic = None
+    def __init__(self, logic: Logic):
+        self.logic: Logic = logic
         self.predicates: set[FNode] = set()
         self.clauses: set[FNode] = set()
 
-    def set_logic(self, logic: Logic) -> None:
-        self.logic = logic
+        self._is_linear: bool = True
 
     def get_logic(self) -> Optional[Logic]:
         return self.logic
@@ -31,21 +31,64 @@ class CHCSystem:
 
         :param pred: a pysmt Symbol of type FunctionType
         """
-        # TODO: check type
+        type_ = pred.get_type()
+        if not type_.is_function_type():
+            raise PyCHCInvalidSystemException(
+                f"Predicate {pred} must have a function type."
+            )
+        if type_.return_type != BOOL:
+            raise PyCHCInvalidSystemException(
+                f"Predicate {pred} must have Boolean return type."
+            )
+        if pred in self.predicates:
+            raise PyCHCInvalidSystemException(f"Predicate {pred} already declared.")
         self.predicates.add(pred)
 
     def get_predicates(self) -> set[FNode]:
         return self.predicates
 
-    def add_clause(self, formula: FNode) -> None:
+    def add_clause(self, head: FNode, body: Optional[FNode] = None) -> None:
         """
         Add a CHC clause.
 
         :param formula: a pysmt FNode representing a CHC clause.
         It must have no free variables and use a compliant logic.
         """
-        # TODO: check logic compliance, predicate usage, etc.
-        self.clauses.add(formula)
+        from pysmt.oracles import get_logic
+        from pysmt.shortcuts import Implies, ForAll, TRUE
+
+        clause = head if body is None else Implies(body, head)
+        clause_logic = get_logic(clause)
+        if not (clause_logic <= self.logic):
+            raise PyCHCInvalidSystemException(
+                f"Clause {clause} (of logic {clause_logic}) outside of system logic {self.logic}"
+            )
+        if clause_logic.is_quantified():
+            raise PyCHCInvalidSystemException(
+                f"Clause {clause} should not be quantified."
+            )
+        head_preds = list(
+            filter(lambda x: x.is_function_application(), head.get_atoms())
+        )
+        if len(head_preds) > 1:
+            raise PyCHCInvalidSystemException(
+                f"Head {head} must be a single predicate."
+            )
+        body = body if body is not None else TRUE()
+        body_preds = set(
+            filter(lambda x: x.is_function_application(), body.get_atoms())
+        )
+        if len(body_preds) > 1:
+            self._is_linear = False
+        for pred in set(head_preds) | body_preds:
+            if pred.function_name() not in self.predicates:
+                raise PyCHCInvalidSystemException(
+                    f"Predicate {pred.arg(0)} used in clause {clause} not declared."
+                )
+
+        fv = clause.get_free_variables() - self.predicates
+        closed_clause = clause if len(fv) == 0 else ForAll(fv, clause)
+        self.clauses.add(closed_clause)
 
     def get_clauses(self) -> set[FNode]:
         return self.clauses
