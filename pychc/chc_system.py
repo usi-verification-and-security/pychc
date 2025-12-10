@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import itertools
 import logging
 
 from pathlib import Path
@@ -31,7 +32,12 @@ class CHCSystem:
 
         :param pred: a pysmt Symbol of type FunctionType
         """
-        type_ = pred.get_type()
+        try:
+            type_ = pred.get_type()
+        except Exception as e:
+            raise PyCHCInvalidSystemException(
+                f"Error getting type of predicate {pred}: {e}"
+            ) from e
         if not type_.is_function_type():
             raise PyCHCInvalidSystemException(
                 f"Predicate {pred} must have a function type."
@@ -172,7 +178,12 @@ class CHCSystem:
         with out_path.open("w") as f:
             printer = SmtPrinter(f)
             f.write(f"(set-logic HORN)\n")
-            for pred in self.predicates:
+            # collect the predicates appearing in clauses
+            # an used predicate is clause free variable mentioned in self.predicates.
+            used_preds = itertools.chain.from_iterable(
+                self.predicates & clause.get_free_variables() for clause in self.clauses
+            )
+            for pred in used_preds:
                 args_str = " ".join(str(arg) for arg in pred.get_type().param_types)
                 f.write(f"(declare-fun {pred.symbol_name()} ({args_str}) Bool)\n")
             f.write("\n")

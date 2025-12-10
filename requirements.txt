@@ -1,3 +1,5 @@
 setuptools
 --pre
 pysmt
+
+pytest

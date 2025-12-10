@@ -9,12 +9,18 @@ pip install -r requirements.txt
 
 Install some SMT solvers from `pySMT`
 ```
-python -m pysmt install --z3 --msat --confirm-agreement
+python -m pysmt install --z3 --confirm-agreement
 ```
 
-## Run toy test
+## Run toy example
 
 ```
-python -m pychc.tests.basic_test
+python -m example.sat_check
 ```
+
+## Run tests
+```
+python -m pytest pychc/tests
+```
+
 
