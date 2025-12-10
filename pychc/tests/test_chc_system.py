@@ -2,12 +2,14 @@ import pytest
 import functools
 
 from pysmt.logics import QF_UFLIA, QF_UFLRA
-from pysmt.shortcuts import Int, Real, Symbol, And, Equals, Plus, LT, TRUE, FALSE
+from pysmt.shortcuts import Int, Real, Symbol, And, Equals, Plus
 from pysmt.typing import INT, REAL, BOOL, FunctionType
 
 from pychc.chc_system import CHCSystem
 from pychc.shortcuts import Predicate, Apply
 from pychc.exceptions import PyCHCInvalidSystemException
+
+from pychc.tests.common import reset_pysmt_env
 
 
 def run_chc_solver(test_func):
@@ -28,17 +30,6 @@ def run_chc_solver(test_func):
 
         solver = GolemSolver(sys)
         solver.solve(get_witness=False)
-
-    return _wrapper
-
-
-def reset_pysmt_env(test_func):
-    @functools.wraps(test_func)
-    def _wrapper(*args, **kwargs):
-        from pysmt.environment import reset_env
-
-        reset_env()
-        return test_func(*args, **kwargs)
 
     return _wrapper
 
