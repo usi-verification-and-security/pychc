@@ -180,8 +180,11 @@ class CHCSystem:
             f.write(f"(set-logic HORN)\n")
             # collect the predicates appearing in clauses
             # an used predicate is clause free variable mentioned in self.predicates.
-            used_preds = itertools.chain.from_iterable(
-                self.predicates & clause.get_free_variables() for clause in self.clauses
+            used_preds = set(
+                itertools.chain.from_iterable(
+                    self.predicates & clause.get_free_variables()
+                    for clause in self.clauses
+                )
             )
             for pred in used_preds:
                 args_str = " ".join(str(arg) for arg in pred.get_type().param_types)
