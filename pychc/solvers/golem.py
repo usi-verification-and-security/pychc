@@ -12,7 +12,7 @@ from pysmt.substituter import FunctionInterpretation
 from pysmt.smtlib.parser.parser import SmtLibParser
 from pysmt.typing import BOOL
 
-from pychc.solvers.chc_witness import CHCStatus, SatWitness
+from pychc.solvers.chc_witness import CHCStatus, SatWitness, UnsatWitness
 from pychc.solvers.chc_solver import CHCSolver, Options
 from pychc.exceptions import PyCHCInvalidResultException
 

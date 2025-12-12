@@ -11,7 +11,7 @@ from typing import Optional
 
 from pychc.solvers.chc_witness import CHCWitness, CHCStatus
 from pychc.chc_system import CHCSystem
-from pychc.exceptions import PyCHCSolverException
+from pychc.exceptions import PyCHCSolverException, PyCHCInternalException
 
 
 class Options(ABC):
@@ -51,7 +51,7 @@ class CHCSolver(ABC):
     Abstract base class for CHC solvers.
     """
 
-    NAME = "abstract_solver"
+    NAME: str = ""
     OPTION_CLASS = Options
 
     def __init__(self, chc_system: CHCSystem, binary_path: Optional[Path] = None):
@@ -67,10 +67,9 @@ class CHCSolver(ABC):
 
         self.options: Options = self.OPTION_CLASS()
 
-        if binary_path:
-            solver_path = which(self.NAME, path=str(binary_path))
-        else:
-            solver_path = which(self.NAME)
+        if not self.NAME:
+            raise PyCHCInternalException("CHCSolver.NAME must be defined by subclass")
+        solver_path = which(self.NAME, path=str(binary_path) if binary_path else None)
         if not solver_path:
             raise PyCHCSolverException(f"{self.NAME} executable not found")
         self._solver_path = Path(solver_path)
