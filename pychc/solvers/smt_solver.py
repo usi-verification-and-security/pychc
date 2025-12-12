@@ -74,13 +74,21 @@ class SMTSolver(SmtLibSolver):
             args=args, environment=env, logic=logic, LOGICS=self.LOGICS, **options
         )
 
+    def _send_command_get_proof(self):
+        # NOTE: Workaround to the lack of GET_PROOF serialization in pySMT
+        # The following is mocking:
+        #     self._send_command(SmtLibCommand(smtcmd.GET_PROOF, []))
+        self._debug(f"Sending: (get-proof)")
+        self.solver_stdin.write(f"(get-proof)\n")
+        self.solver_stdin.flush()
+
     def get_proof(self) -> str:
         """
         Request a proof/certificate from the solver using `(get-proof)`.
 
         Returns the raw proof text from the solver stdout.
         """
-        self._send_command(SmtLibCommand(smtcmd.GET_PROOF, []))
+        self._send_command_get_proof()
 
         proof = self._read_proof_output()
         return proof
