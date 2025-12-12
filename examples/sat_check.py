@@ -2,18 +2,18 @@ from pathlib import Path
 
 from pychc.solvers.chc_solver import CHCStatus
 from pychc.solvers.golem import GolemSolver
+from pychc.solvers.opensmt import OpenSMTSolver
 from pychc.chc_system import CHCSystem
 from pychc.exceptions import PyCHCSolverException
 
-from pysmt.typing import INT, BOOL, FunctionType
-from pysmt.logics import QF_UFLIA
+from pysmt.typing import INT, REAL
+from pysmt.logics import QF_UFLRA, QF_UFLIA
 from pysmt.shortcuts import (
-    Solver,
     And,
     Symbol,
     Equals,
-    Int,
-    Plus,
+    Int, Real,
+    Plus, Minus,
     FALSE,
     LT,
 )
@@ -64,12 +64,15 @@ if status == CHCStatus.SAT:
 
     # Validate the witness with an external SMT solver
     queries = sys.get_validate_model_queries(witness)
-    smt_solver = Solver(name="z3")
+    
+    smt_solver = OpenSMTSolver(logic=QF_UFLIA, produce_proofs=True)
+
     for query in queries:
         print(f"Validating query: {query}")
         if not smt_solver.is_valid(query):
             print("ERROR! Query validation failed!")
         else:
             print("Query validated successfully.")
+            print(smt_solver.get_proof())
 else:
     raise PyCHCSolverException("The provided CHC system should be SAT")
