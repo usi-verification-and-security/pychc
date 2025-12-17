@@ -23,20 +23,22 @@ from pychc.exceptions import PyCHCInvalidResultException
 from pychc.tests.common import reset_pysmt_env
 
 from pychc.solvers.golem import GolemSolver
-from pychc.solvers.z3 import Z3Solver
+from pychc.solvers.z3 import Z3CHCSolver, Z3SMTSolver
 
 from pychc.solvers.opensmt import OpenSMTSolver
 from pychc.solvers.cvc5 import CVC5Solver, ProofFormat
 
 ALL_OPTIONS = [
     (GolemSolver, OpenSMTSolver, None),
-    (GolemSolver, CVC5Solver, {"proof_format": ProofFormat.ALETHE}),
-    (GolemSolver, CVC5Solver, {"proof_format": ProofFormat.LFSC}),
-    (GolemSolver, CVC5Solver, {"proof_format": ProofFormat.DOT}),
-    (Z3Solver, OpenSMTSolver, None),
-    (Z3Solver, CVC5Solver, {"proof_format": ProofFormat.ALETHE}),
-    (Z3Solver, CVC5Solver, {"proof_format": ProofFormat.LFSC}),
-    (Z3Solver, CVC5Solver, {"proof_format": ProofFormat.DOT}),
+    (GolemSolver, Z3SMTSolver, None),
+    (GolemSolver, CVC5Solver, ProofFormat.ALETHE),
+    (GolemSolver, CVC5Solver, ProofFormat.LFSC),
+    (GolemSolver, CVC5Solver, ProofFormat.DOT),
+    (Z3CHCSolver, OpenSMTSolver, None),
+    (Z3CHCSolver, Z3SMTSolver, None),
+    (Z3CHCSolver, CVC5Solver, ProofFormat.ALETHE),
+    (Z3CHCSolver, CVC5Solver, ProofFormat.LFSC),
+    (Z3CHCSolver, CVC5Solver, ProofFormat.DOT),
 ]
 
 
@@ -52,15 +54,16 @@ def run_solver(test_func):
 
         chc_cls = kwargs.pop("chc_class", None)
         smt_cls = kwargs.pop("smt_class", None)
-        smt_kw = kwargs.pop("smt_kwargs", None) or {}
+        proof = kwargs.pop("smt_kwargs", None)
 
         # Run CHC solver
-        chc_solver = chc_cls(sys)
+        chc_solver = chc_cls()
+        chc_solver.load_system(sys)
         chc_solver.solve(get_witness=True)
         model = chc_solver.get_witness()
 
         # Instantiate SMT validator
-        validator = smt_cls(logic=sys.get_logic(), **smt_kw)
+        validator = smt_cls(logic=sys.get_logic(), proof_format=proof)
 
         # Z3 might return quantified interpretations for the predicates
         # TODO: check if performing QE with z3 is ok for the certification purposes

@@ -51,28 +51,27 @@ print("written to:", tmp.resolve())
 # TODO: use a factory
 # Note: this requires Golem to be installed and accessible in PATH
 # otherwise, set `binary_path` argument to the GolemSolver constructor
-solver = GolemSolver(sys)
+solver = GolemSolver()
+solver.load_system(sys)
 status = solver.solve(get_witness=True)
 print(f"Solving status: {status}")
 
 witness = solver.get_witness()
 
-if status == CHCStatus.SAT:
-    print("SAT witness definitions:")
-    for var, expr in witness.definitions.items():
-        print(f"{var} := {expr.function_body}")
+assert status == CHCStatus.SAT and witness is not None
 
-    # Validate the witness with an external SMT solver
-    queries = sys.get_validate_model_queries(witness)
-    
-    smt_solver = OpenSMTSolver(logic=QF_UFLIA, produce_proofs=True)
+print("SAT witness definitions:")
+for var, expr in witness.definitions.items():
+    print(f"{var} := {expr.function_body}")
 
-    for query in queries:
-        print(f"Validating query: {query}")
-        if not smt_solver.is_valid(query):
-            print("ERROR! Query validation failed!")
-        else:
-            print("Query validated successfully.")
-            print(smt_solver.get_proof())
-else:
-    raise PyCHCSolverException("The provided CHC system should be SAT")
+# Validate the witness with an external SMT solver
+queries = sys.get_validate_model_queries(witness)
+
+smt_solver = OpenSMTSolver(logic=QF_UFLIA)
+for query in queries:
+    print(f"Validating query: {query}")
+    if not smt_solver.is_valid(query):
+        print("ERROR! Query validation failed!")
+    else:
+        print("Query validated successfully.")
+        print(smt_solver.get_proof())

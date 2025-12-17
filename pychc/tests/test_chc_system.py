@@ -28,7 +28,8 @@ def run_chc_solver(test_func):
 
         from pychc.solvers.golem import GolemSolver
 
-        solver = GolemSolver(sys)
+        solver = GolemSolver()
+        solver.load_system(sys)
         solver.solve(get_witness=False)
 
     return _wrapper
