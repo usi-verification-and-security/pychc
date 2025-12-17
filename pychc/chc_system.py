@@ -12,7 +12,7 @@ from pysmt.smtlib.printers import SmtPrinter
 from pysmt.typing import BOOL
 
 from pychc.exceptions import PyCHCInvalidSystemException
-from pychc.solvers.chc_witness import SatWitness, UnsatWitness, CHCWitness
+from pychc.solvers.witness import SatWitness, UnsatWitness, Witness
 
 
 class CHCSystem:
@@ -63,7 +63,10 @@ class CHCSystem:
         from pysmt.oracles import get_logic
         from pysmt.shortcuts import Implies, ForAll, TRUE
 
-        clause = head if body is None else Implies(body, head)
+        if not body:
+            body = TRUE()
+        # Clauses must be implications, even when body is TRUE
+        clause = Implies(body, head)
         clause_logic = get_logic(clause)
         if not (clause_logic <= self.logic):
             raise PyCHCInvalidSystemException(
@@ -150,7 +153,7 @@ class CHCSystem:
         """Check whether the given UNSAT witness is syntactically consistent."""
         raise NotImplementedError()
 
-    def check_witness_consistency(self, witness: CHCWitness) -> bool:
+    def check_witness_consistency(self, witness: Witness) -> bool:
         """
         Check whether the given witness is *syntactically* consistent with the system.
 

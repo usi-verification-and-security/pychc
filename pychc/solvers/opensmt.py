@@ -4,9 +4,9 @@ from pathlib import Path
 from typing import Optional
 
 from pysmt.logics import QF_LRA, QF_LIA, Logic
-from pysmt.smtlib.script import SmtLibCommand
-from pysmt.smtlib import commands as smtcmd
 
+from pychc.exceptions import PyCHCSolverException
+from pychc.solvers.witness import ProofFormat
 from pychc.solvers.smt_solver import SMTSolver, SMTSolverOptions
 
 
@@ -16,7 +16,10 @@ class OpenSMTOptions(SMTSolverOptions):
     No additional set-options are required beyond proofs configuration.
     """
 
-    pass
+    def __init__(self, proof_format: Optional[ProofFormat] = None, **base_options):
+        super().__init__(**base_options)
+        if proof_format:
+            raise PyCHCSolverException(f"OpenSMT only supports native proof format.")
 
 
 class OpenSMTSolver(SMTSolver):

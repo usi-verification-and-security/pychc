@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-from abc import abstractmethod
 from pathlib import Path
 from select import select
 from shutil import which
@@ -8,11 +7,10 @@ from time import time
 from typing import Optional
 
 from pysmt.smtlib.solver import SmtLibSolver, SmtLibOptions
-from pysmt.smtlib.script import SmtLibCommand
-from pysmt.smtlib import commands as smtcmd
 from pysmt.environment import get_env
 from pysmt.logics import Logic
 
+from pychc.solvers.witness import ProofFormat
 from pychc.exceptions import PyCHCSolverException, PyCHCInternalException
 
 
@@ -25,9 +23,19 @@ class SMTSolverOptions(SmtLibOptions):
     - Additional `solver_options` passed through as standard SMT-LIB `set-option`.
     """
 
-    def __init__(self, produce_proofs: bool = True, **base_options):
+    PROOF_FORMATS: set[ProofFormat] = set()
+
+    def __init__(
+        self,
+        produce_proofs: bool = True,
+        proof_format: Optional[ProofFormat] = None,
+        **base_options,
+    ):
         super().__init__(**base_options)
         self.produce_proofs = produce_proofs
+        if proof_format and proof_format not in self.PROOF_FORMATS:
+            raise PyCHCSolverException(f"Unsupported proof format: {proof_format}")
+        self.proof_format = proof_format
 
     def __call__(self, solver: SmtLibSolver):
         # Invoke base options first

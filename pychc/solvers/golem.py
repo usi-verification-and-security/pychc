@@ -4,6 +4,7 @@ Golem instance of CHCSolver
 
 from __future__ import annotations
 
+from enum import Enum
 import logging
 
 from typing import Optional
@@ -12,17 +13,26 @@ from pysmt.substituter import FunctionInterpretation
 from pysmt.smtlib.parser.parser import SmtLibParser
 from pysmt.typing import BOOL
 
-from pychc.solvers.chc_witness import CHCStatus, SatWitness, UnsatWitness
-from pychc.solvers.chc_solver import CHCSolver, Options
-from pychc.exceptions import PyCHCInvalidResultException
+from pychc.solvers.witness import ProofFormat, Status, SatWitness, UnsatWitness
+from pychc.solvers.chc_solver import CHCSolver, CHCSolverOptions
+from pychc.exceptions import PyCHCInvalidResultException, PyCHCSolverException
 
 
-class GolemOptions(Options):
+class GolemOptions(CHCSolverOptions):
     """Options passed to the Golem process via command line flags."""
 
-    def enable_print_witness(self, value: bool = True):
-        """Enable `--print-witness` to request witness output."""
+    PROOF_FORMATS = {ProofFormat.LEGACY, ProofFormat.INTERMEDIATE, ProofFormat.ALETHE}
 
+    def set_print_witness(
+        self, value: bool = True, proof_format: Optional[ProofFormat] = None
+    ):
+        """Enable `--print-witness` to request witness output."""
+        if proof_format:
+            if proof_format not in self.PROOF_FORMATS:
+                raise PyCHCSolverException(
+                    f"Unsupported proof format for Golem: {proof_format}"
+                )
+            self._set_option(f"--proof-format", proof_format.value)
         self._set_flag("--print-witness", value)
 
 
@@ -32,15 +42,15 @@ class GolemSolver(CHCSolver):
     NAME = "golem"
     OPTION_CLASS = GolemOptions
 
-    def decide_result(self, output: str) -> CHCStatus:
+    def decide_result(self, output: str) -> Status:
         first = output.splitlines()[0].strip().lower() if output else ""
         if first == "sat":
-            return CHCStatus.SAT
+            return Status.SAT
         if first == "unsat":
-            return CHCStatus.UNSAT
-        return CHCStatus.UNKNOWN
+            return Status.UNSAT
+        return Status.UNKNOWN
 
-    def extract_model(self, output: str) -> Optional[SatWitness]:
+    def extract_model(self, output: str) -> SatWitness:
         """
         Extract a SAT witness (model) from solver output.
 
@@ -81,7 +91,15 @@ class GolemSolver(CHCSolver):
 
         return witness
 
-    def extract_unsat_proof(self, output: str) -> Optional[UnsatWitness]:
+    def extract_unsat_proof(
+        self, output: str, proof_format: Optional[ProofFormat]
+    ) -> UnsatWitness:
         """Extract an UNSAT certificate/proof from solver output."""
 
-        raise NotImplementedError
+        lines = output.splitlines()
+        if not lines:
+            return None
+        # Skip the first status line
+        smt_text = "\n".join(lines[1:]).strip()
+
+        return UnsatWitness(smt_text, proof_format=proof_format)

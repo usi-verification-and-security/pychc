@@ -9,19 +9,24 @@ from subprocess import run, CalledProcessError
 
 from typing import Optional
 
-from pychc.solvers.chc_witness import CHCWitness, CHCStatus
+from pychc.solvers.witness import SatWitness, UnsatWitness, Witness, Status, ProofFormat
 from pychc.chc_system import CHCSystem
 from pychc.exceptions import PyCHCSolverException, PyCHCInternalException
 
 
-class Options(ABC):
+class CHCSolverOptions(ABC):
     """
     Abstract base class for solver options.
     """
 
-    def __init__(self):
+    PROOF_FORMATS: set[ProofFormat] = set()
+
+    def __init__(
+        self, print_witness: bool = False, proof_format: Optional[ProofFormat] = None
+    ):
         self._options = {}
         self._flags = set()
+        self.set_print_witness(print_witness, proof_format)
 
     def to_array(self) -> list[str]:
         """Convert options to CLI args list."""
@@ -39,8 +44,13 @@ class Options(ABC):
         else:
             self._flags.discard(flag)
 
+    def _set_option(self, option: str, value):
+        self._options[option] = value
+
     @abstractmethod
-    def enable_print_witness(self, enable: bool) -> None:
+    def set_print_witness(
+        self, enable: bool, proof_format: Optional[ProofFormat] = None
+    ) -> None:
         """
         Enable or disable printing of witness/model in the solver output.
         """
@@ -52,20 +62,20 @@ class CHCSolver(ABC):
     """
 
     NAME: str = ""
-    OPTION_CLASS = Options
+    OPTION_CLASS = CHCSolverOptions
 
-    def __init__(self, chc_system: CHCSystem, binary_path: Optional[Path] = None):
+    def __init__(self, binary_path: Optional[Path] = None, **options):
         """
         Initialize the solver with a CHC system.
 
         :param chc_system: CHC system to solve
         """
 
-        self.system: CHCSystem = chc_system
-        self._status: Optional[CHCStatus] = None
-        self._witness: Optional[CHCWitness] = None
+        self.system: Optional[CHCSystem] = None
+        self._status: Optional[Status] = None
+        self._witness: Optional[Witness] = None
 
-        self.options: Options = self.OPTION_CLASS()
+        self.options: CHCSolverOptions = self.OPTION_CLASS(**options)
 
         if not self.NAME:
             raise PyCHCInternalException("CHCSolver.NAME must be defined by subclass")
@@ -78,14 +88,29 @@ class CHCSolver(ABC):
                 f"{self.NAME} executable not found at: {self._solver_path}"
             )
 
-    def solve(self, get_witness: bool = False) -> CHCStatus:
+    def load_system(self, chc_system: CHCSystem) -> None:
+        """
+        Load a CHC system into the solver.
+        """
+        if self.system:
+            logging.warning("Overwriting existing CHC system in solver")
+            self._witness = None
+            self._status = None
+        self.system = chc_system
+
+    def solve(
+        self, get_witness: bool = False, proof_format: Optional[ProofFormat] = None
+    ) -> Status:
         """
         Run the solver on the provided CHC system.
 
         :param get_witness: whether to create a witness/model while solving
         """
-        if get_witness:
-            self.options.enable_print_witness(True)
+
+        if not self.system:
+            raise PyCHCSolverException("No CHC system loaded in solver")
+
+        self.options.set_print_witness(get_witness, proof_format)
 
         args_extra = self.options.to_array()
 
@@ -98,7 +123,7 @@ class CHCSolver(ABC):
             except CalledProcessError as err:
                 raw_output = (err.stdout or "") + (err.stderr or "")
                 logging.error(f"{self.NAME} execution failed: {raw_output}")
-                self._status = CHCStatus.UNKNOWN
+                self._status = Status.UNKNOWN
                 raise PyCHCSolverException(f"{self.NAME} execution failed")
 
             raw_output = (proc.stdout or "").strip()
@@ -106,38 +131,41 @@ class CHCSolver(ABC):
             # Understand if SAT/UNSAT/UNKNOWN
             self._status = self.decide_result(raw_output)
 
-            if not get_witness or self._status == CHCStatus.UNKNOWN:
+            if not get_witness or self._status == Status.UNKNOWN:
+                self._witness = None
                 return self._status
 
             # Extract witness
-            if self._status == CHCStatus.SAT:
+            if self._status == Status.SAT:
                 self._witness = self.extract_model(raw_output)
             else:
-                self._witness = self.extract_unsat_proof(raw_output)
+                self._witness = self.extract_unsat_proof(raw_output, proof_format)
 
             return self._status
 
-    def get_witness(self) -> Optional[CHCWitness]:
+    def get_witness(self) -> Optional[Witness]:
         """
         Return a model/witness. Must be called after a `solve()` with `get_witness=True`
-        that returned `CHCStatus.SAT` or `CHCStatus.UNSAT`.
+        that returned `Status.SAT` or `Status.UNSAT`.
         """
         return self._witness
 
     @abstractmethod
-    def decide_result(self, output: str) -> CHCStatus:
+    def decide_result(self, output: str) -> Status:
         """
         Decide the solving result (SAT/UNSAT/UNKNOWN) from the solver output.
         """
 
     @abstractmethod
-    def extract_model(self, output: str) -> Optional[CHCWitness]:
+    def extract_model(self, output: str) -> SatWitness:
         """
         Extract a SAT witness/model from the solver output.
         """
 
     @abstractmethod
-    def extract_unsat_proof(self, output: str) -> Optional[CHCWitness]:
+    def extract_unsat_proof(
+        self, output: str, proof_format: Optional[ProofFormat]
+    ) -> UnsatWitness:
         """
         Extract an UNSAT proof from the solver output.
         """

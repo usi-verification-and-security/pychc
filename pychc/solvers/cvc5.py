@@ -2,17 +2,11 @@ from __future__ import annotations
 
 from pathlib import Path
 from typing import Optional
-from enum import Enum
 
 from pysmt.logics import QF_LRA, LRA, QF_LIA, LIA, Logic
 
+from pychc.solvers.witness import ProofFormat
 from pychc.solvers.smt_solver import SMTSolver, SMTSolverOptions
-
-
-class ProofFormat(str, Enum):
-    ALETHE = "alethe"
-    LFSC = "lfsc"
-    DOT = "dot"
 
 
 class CVC5Options(SMTSolverOptions):
@@ -22,16 +16,20 @@ class CVC5Options(SMTSolverOptions):
     Extends SMTSolverOptions with `proof_format` to select the proof output format.
     """
 
+    PROOF_FORMATS = {ProofFormat.ALETHE, ProofFormat.LFSC, ProofFormat.DOT}
+
     def __init__(
         self, proof_format: Optional[ProofFormat] = ProofFormat.ALETHE, **base_options
     ):
         super().__init__(**base_options)
+        if proof_format and proof_format not in self.PROOF_FORMATS:
+            raise ValueError(f"Unsupported proof format for CVC5: {proof_format}")
         self.proof_format: Optional[ProofFormat] = proof_format
 
     def __call__(self, solver):
         # Base options (including produce-proofs)
         super().__call__(solver)
-        if self.proof_format is not None:
+        if self.proof_format:
             solver.set_option(":proof-format-mode", self.proof_format.value)
 
 
