@@ -12,11 +12,10 @@ from pysmt.shortcuts import (
     FALSE,
     Minus,
 )
-from pysmt.typing import INT, REAL
-from pysmt.oracles import get_logic
+from pysmt.typing import INT
 
 from pychc.chc_system import CHCSystem
-from pychc.shortcuts import Predicate, Apply
+from pychc.shortcuts import Predicate, Apply, Clause
 from pychc.exceptions import PyCHCSolverException
 
 from pychc.solvers.witness import ProofFormat, Status
@@ -54,7 +53,7 @@ def run_solver(test_func):
             with pytest.raises(PyCHCSolverException):
                 chc_solver.solve(get_witness=True, proof_format=proof)
             return
-    
+
         status = chc_solver.solve(get_witness=True, proof_format=proof)
         assert status == Status.UNSAT, "Expected UNSAT result from the solver"
         model = chc_solver.get_witness()
@@ -74,9 +73,9 @@ def test_system1(chc_class, proof, expected_ok):
     inv = Predicate("inv", [INT])
     x = Symbol("x", INT)
     sys.add_predicate(inv)
-    sys.add_clause(head=Apply(inv, [Int(0)]))
-    sys.add_clause(body=Apply(inv, [x]), head=Apply(inv, [Plus(x, Int(1))]))
-    sys.add_clause(body=And(Apply(inv, [x]), LT(x, Int(5))), head=FALSE())
+    sys.add_clause(Clause(head=Apply(inv, [Int(0)])))
+    sys.add_clause(Clause(body=Apply(inv, [x]), head=Apply(inv, [Plus(x, Int(1))])))
+    sys.add_clause(Clause(body=And(Apply(inv, [x]), LT(x, Int(5))), head=FALSE()))
     return sys
 
 
@@ -93,8 +92,8 @@ def test_system2(chc_class, proof, expected_ok):
     x = Symbol("x", INT)
     sys.add_predicate(inv1)
     sys.add_predicate(inv2)
-    sys.add_clause(head=Apply(inv1, [Int(0)]))
-    sys.add_clause(body=Apply(inv1, [x]), head=Apply(inv1, [Plus(x, Int(1))]))
-    sys.add_clause(body=Apply(inv1, [x]), head=Apply(inv2, [Minus(Int(0), x)]))
-    sys.add_clause(body=And(Apply(inv2, [x]), LT(Int(-5), x)), head=FALSE())
+    sys.add_clause(Clause(head=Apply(inv1, [Int(0)])))
+    sys.add_clause(Clause(body=Apply(inv1, [x]), head=Apply(inv1, [Plus(x, Int(1))])))
+    sys.add_clause(Clause(body=Apply(inv1, [x]), head=Apply(inv2, [Minus(Int(0), x)])))
+    sys.add_clause(Clause(body=And(Apply(inv2, [x]), LT(Int(-5), x)), head=FALSE()))
     return sys

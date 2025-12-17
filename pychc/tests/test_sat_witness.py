@@ -17,7 +17,7 @@ from pysmt.typing import INT, REAL
 from pysmt.oracles import get_logic
 
 from pychc.chc_system import CHCSystem
-from pychc.shortcuts import Predicate, Apply
+from pychc.shortcuts import Predicate, Apply, Clause
 from pychc.exceptions import PyCHCInvalidResultException
 
 from pychc.tests.common import reset_pysmt_env
@@ -103,9 +103,9 @@ def test_system1(chc_class, smt_class, smt_kwargs):
     inv = Predicate("inv", [INT])
     x = Symbol("x", INT)
     sys.add_predicate(inv)
-    sys.add_clause(head=Apply(inv, [Int(0)]))
-    sys.add_clause(body=Apply(inv, [x]), head=Apply(inv, [Plus(x, Int(1))]))
-    sys.add_clause(body=And(Apply(inv, [x]), LT(x, Int(0))), head=FALSE())
+    sys.add_clause(Clause(head=Apply(inv, [Int(0)])))
+    sys.add_clause(Clause(body=Apply(inv, [x]), head=Apply(inv, [Plus(x, Int(1))])))
+    sys.add_clause(Clause(body=And(Apply(inv, [x]), LT(x, Int(0))), head=FALSE()))
     return sys
 
 
@@ -122,8 +122,8 @@ def test_system2(chc_class, smt_class, smt_kwargs):
     x = Symbol("x", INT)
     sys.add_predicate(inv1)
     sys.add_predicate(inv2)
-    sys.add_clause(head=Apply(inv1, [Int(0)]))
-    sys.add_clause(body=Apply(inv1, [x]), head=Apply(inv1, [Plus(x, Int(1))]))
-    sys.add_clause(body=Apply(inv1, [x]), head=Apply(inv2, [Minus(Int(0), x)]))
-    sys.add_clause(body=And(Apply(inv2, [x]), LT(Int(0), x)), head=FALSE())
+    sys.add_clause(Clause(Apply(inv1, [Int(0)])))
+    sys.add_clause(Clause(body=Apply(inv1, [x]), head=Apply(inv1, [Plus(x, Int(1))])))
+    sys.add_clause(Clause(body=Apply(inv1, [x]), head=Apply(inv2, [Minus(Int(0), x)])))
+    sys.add_clause(Clause(body=And(Apply(inv2, [x]), LT(Int(0), x)), head=FALSE()))
     return sys

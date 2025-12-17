@@ -6,7 +6,7 @@ from pysmt.shortcuts import Int, Real, Symbol, And, Equals, Plus
 from pysmt.typing import INT, REAL, BOOL, FunctionType
 
 from pychc.chc_system import CHCSystem
-from pychc.shortcuts import Predicate, Apply
+from pychc.shortcuts import Predicate, Apply, Clause
 from pychc.exceptions import PyCHCInvalidSystemException
 
 from pychc.tests.common import reset_pysmt_env
@@ -122,7 +122,7 @@ def test_add_predicate_invalid6(chc_sys_lra):
 def test_shortcuts(chc_sys_lia):
     inv = Predicate("inv", [INT])
     chc_sys_lia.add_predicate(inv)
-    chc_sys_lia.add_clause(head=Apply(inv, [Int(0)]))
+    chc_sys_lia.add_clause(Clause(head=Apply(inv, [Int(0)])))
     clauses = chc_sys_lia.get_clauses()
     assert len(clauses) == 1
     return chc_sys_lia
@@ -139,8 +139,10 @@ def test_add_clause_valid1(chc_sys_lia):
     b = Symbol("b", BOOL)
 
     chc_sys_lia.add_clause(
-        body=And(Apply(inv, [x]), Equals(nx, Plus(x, Int(1))), b),
-        head=And(b, Apply(inv, [nx])),
+        Clause(
+            body=And(Apply(inv, [x]), Equals(nx, Plus(x, Int(1))), b),
+            head=And(b, Apply(inv, [nx])),
+        )
     )
 
     clauses = chc_sys_lia.get_clauses()
@@ -160,7 +162,7 @@ def test_add_clause_valid2(chc_sys_lra):
     x = Symbol("x", REAL)
 
     chc_sys_lra.add_clause(
-        body=Apply(inv_real, [x]), head=Apply(inv_real, [Plus(x, Real(1))])
+        Clause(body=Apply(inv_real, [x]), head=Apply(inv_real, [Plus(x, Real(1))]))
     )
     clauses = chc_sys_lra.get_clauses()
     assert len(clauses) == 1
@@ -179,13 +181,17 @@ def test_add_clause_valid3(chc_sys_lra):
     x = Symbol("x", REAL)
 
     chc_sys_lra.add_clause(
-        body=And(Apply(inv2, [Real(0), Real(2)]), Apply(inv1, [x])),
-        head=Apply(inv2, [Real(10), Plus(x, Real(1))]),
+        Clause(
+            body=And(Apply(inv2, [Real(0), Real(2)]), Apply(inv1, [x])),
+            head=Apply(inv2, [Real(10), Plus(x, Real(1))]),
+        )
     )
 
     chc_sys_lra.add_clause(
-        body=And(Apply(inv1, [Real(0)]), Apply(inv1, [x])),
-        head=Apply(inv2, [Real(10), Plus(x, Real(1))]),
+        Clause(
+            body=And(Apply(inv1, [Real(0)]), Apply(inv1, [x])),
+            head=Apply(inv2, [Real(10), Plus(x, Real(1))]),
+        )
     )
 
     clauses = chc_sys_lra.get_clauses()
@@ -204,8 +210,12 @@ def test_add_clause_invalid1(chc_sys_lra):
     x = Symbol("x", REAL)
     with pytest.raises(PyCHCInvalidSystemException):
         chc_sys_lra.add_clause(
-            body=And(Apply(inv2, [Real(0), Real(2)]), Apply(inv1, [x])),
-            head=And(Apply(inv1, [Real(0)]), Apply(inv2, [Real(10), Plus(x, Real(1))])),
+            Clause(
+                body=And(Apply(inv2, [Real(0), Real(2)]), Apply(inv1, [x])),
+                head=And(
+                    Apply(inv1, [Real(0)]), Apply(inv2, [Real(10), Plus(x, Real(1))])
+                ),
+            )
         )
 
 
@@ -219,8 +229,10 @@ def test_add_clause_invalid2(chc_sys_lra):
     x = Symbol("x", INT)
     with pytest.raises(PyCHCInvalidSystemException):
         chc_sys_lra.add_clause(
-            body=And(Apply(inv2, [Real(0), Real(2)]), Apply(inv1, [x])),
-            head=And(Apply(inv1, [Real(0)]), Apply(inv1, [Real(10)])),
+            Clause(
+                body=And(Apply(inv2, [Real(0), Real(2)]), Apply(inv1, [x])),
+                head=And(Apply(inv1, [Real(0)]), Apply(inv1, [Real(10)])),
+            )
         )
 
 
@@ -230,7 +242,7 @@ def test_add_clause_invalid3(chc_sys_lra):
     x = Symbol("x", REAL)
     with pytest.raises(PyCHCInvalidSystemException):
         chc_sys_lra.add_clause(
-            body=Apply(inv1, [x]), head=Apply(inv1, [Plus(x, Real(1))])
+            Clause(body=Apply(inv1, [x]), head=Apply(inv1, [Plus(x, Real(1))]))
         )
 
 
@@ -240,7 +252,7 @@ def test_add_clause_invalid4(chc_sys_lra):
     chc_sys_lra.add_predicate(inv1)
     x = Symbol("x", INT)
     with pytest.raises(PyCHCInvalidSystemException):
-        chc_sys_lra.add_clause(body=Apply(inv1, [x]), head=Symbol("b", BOOL))
+        chc_sys_lra.add_clause(Clause(body=Apply(inv1, [x]), head=Symbol("b", BOOL)))
 
 
 @reset_pysmt_env
@@ -249,4 +261,4 @@ def test_add_clause_invalid5(chc_sys_lra):
     chc_sys_lra.add_predicate(inv1)
     x = Symbol("x", INT)
     with pytest.raises(PyCHCInvalidSystemException):
-        chc_sys_lra.add_clause(head=Apply(inv1, [Int(1)]))
+        chc_sys_lra.add_clause(Clause(head=Apply(inv1, [Int(1)])))

@@ -23,6 +23,37 @@ class CHCSystem:
 
         self._is_linear: bool = True
 
+    @classmethod
+    def load_from_smtlib(cls, path: Path) -> CHCSystem:
+        """Load a CHC system from an SMT-LIB file."""
+        from pychc.parser import CHCParser
+        from pysmt.oracles import get_logic
+
+        parser = CHCParser()
+        script = parser.get_script_fname(str(path))
+
+        # collect predicates
+        get_content = lambda d: d.args[0]
+        decls = map(get_content, script.filter_by_command_name(("declare-fun")))
+        is_pred_decl = (
+            lambda d: d.get_type().is_function_type()
+            and d.get_type().return_type == BOOL
+        )
+        predicates = set(filter(is_pred_decl, decls))
+
+        # collect clauses
+        clauses = list(map(get_content, script.filter_by_command_name("assert")))
+
+        # determine logic
+        logic = max(map(get_logic, clauses))
+
+        # create system
+        sys = cls(logic)
+        [sys.add_predicate(pred) for pred in predicates]
+        [sys.add_clause(clause) for clause in clauses]
+
+        return sys
+
     def get_logic(self) -> Optional[Logic]:
         return self.logic
 
@@ -53,51 +84,40 @@ class CHCSystem:
     def get_predicates(self) -> set[FNode]:
         return self.predicates
 
-    def add_clause(self, head: FNode, body: Optional[FNode] = None) -> None:
+    def add_clause(self, clause: FNode) -> None:
         """
         Add a CHC clause.
 
-        :param formula: a pysmt FNode representing a CHC clause.
+        :param clause: a pysmt FNode representing a CHC clause.
         It must have no free variables and use a compliant logic.
         """
         from pysmt.oracles import get_logic
-        from pysmt.shortcuts import Implies, ForAll, TRUE
 
-        if not body:
-            body = TRUE()
-        # Clauses must be implications, even when body is TRUE
-        clause = Implies(body, head)
-        clause_logic = get_logic(clause)
+        forall_body = clause.arg(0) if clause.is_forall() else clause
+        if not forall_body.is_implies():
+            raise PyCHCInvalidSystemException(
+                f"Clause {clause} must be an implication."
+            )
+        clause_logic = get_logic(forall_body)
         if not (clause_logic <= self.logic):
             raise PyCHCInvalidSystemException(
                 f"Clause {clause} (of logic {clause_logic}) outside of system logic {self.logic}"
             )
-        if clause_logic.is_quantified():
-            raise PyCHCInvalidSystemException(
-                f"Clause {clause} should not be quantified."
-            )
-        head_preds = list(
-            filter(lambda x: x.is_function_application(), head.get_atoms())
-        )
+
+        head, body = forall_body.args()
+        is_pred = lambda x: x.is_function_application() and x.get_type() == BOOL
+        head_preds = list(filter(is_pred, head.get_atoms()))
+        body_preds = set(filter(is_pred, body.get_atoms()))
         if len(head_preds) > 1:
             raise PyCHCInvalidSystemException(
                 f"Head {head} must be a single predicate."
             )
-        body = body if body is not None else TRUE()
-        body_preds = set(
-            filter(lambda x: x.is_function_application(), body.get_atoms())
-        )
-        if len(body_preds) > 1:
-            self._is_linear = False
-        for pred in set(head_preds) | body_preds:
-            if pred.function_name() not in self.predicates:
-                raise PyCHCInvalidSystemException(
-                    f"Predicate {pred.arg(0)} used in clause {clause} not declared."
-                )
-
-        fv = clause.get_free_variables() - self.predicates
-        closed_clause = clause if len(fv) == 0 else ForAll(fv, clause)
-        self.clauses.add(closed_clause)
+        all_preds = itertools.chain(head_preds, body_preds)
+        if any(p.function_name() not in self.predicates for p in all_preds):
+            raise PyCHCInvalidSystemException(
+                f"Clause {clause} uses undeclared predicates."
+            )
+        self.clauses.add(clause)
 
     def get_clauses(self) -> set[FNode]:
         return self.clauses
@@ -191,7 +211,9 @@ class CHCSystem:
             )
             for pred in used_preds:
                 args_str = " ".join(str(arg) for arg in pred.get_type().param_types)
-                f.write(f"(declare-fun {pred.symbol_name()} ({args_str}) Bool)\n")
+                f.write("(declare-fun ")
+                printer.printer(pred)
+                f.write(f" ({args_str}) Bool)\n")
             f.write("\n")
             for clause in self.clauses:
                 f.write("(assert ")

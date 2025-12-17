@@ -69,7 +69,7 @@ class GolemSolver(CHCSolver):
 
         parser = SmtLibParser()
         script = parser.get_script(StringIO(smt_text))
-        decls = script.filter_by_command_name(("declare-fun", "define-fun"))
+        decls = script.filter_by_command_name(("define-fun"))
         for decl in decls:
             args = getattr(decl, "args", [])
             if len(args) == 4:

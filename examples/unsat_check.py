@@ -16,7 +16,7 @@ from pysmt.shortcuts import (
     FALSE,
     LT,
 )
-from pychc.shortcuts import Predicate, Apply
+from pychc.shortcuts import Predicate, Apply, Clause
 
 import logging
 
@@ -28,24 +28,27 @@ sys = CHCSystem(logic=QF_UFLIA)
 inv = Predicate("inv", [INT])
 sys.add_predicate(inv)
 
-sys.add_clause(head=Apply(inv, [Int(0)]))
+sys.add_clause(Clause(Apply(inv, [Int(0)])))
 
 x = Symbol("x", INT)
 nx = Symbol("nx", INT)
 
-sys.add_clause(
+sys.add_clause(Clause(
     body=And(Apply(inv, [x]), Equals(nx, Plus(x, Int(1)))),
     head=Apply(inv, [nx])
-)
-sys.add_clause(
+))
+sys.add_clause(Clause(
     body=And(Apply(inv, [x]), LT(x, Int(3))),
     head=FALSE()
-)
+))
 
 # Serialize the CHC system to an SMT-LIBv2 file
 tmp = Path("chc_example.smt2")
 sys.serialize(tmp)
 print("written to:", tmp.resolve())
+
+# Re-read the CHC system from the SMT-LIBv2 file
+sys = CHCSystem.load_from_smtlib(tmp)
 
 # TODO: use a factory
 # Note: this requires Golem to be installed and accessible in PATH

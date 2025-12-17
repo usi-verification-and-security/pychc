@@ -5,7 +5,7 @@ import tempfile, logging
 from shutil import which
 from pathlib import Path
 from abc import ABC, abstractmethod
-from subprocess import run, CalledProcessError
+from subprocess import run, CalledProcessError, TimeoutExpired
 
 from typing import Optional
 
@@ -99,7 +99,10 @@ class CHCSolver(ABC):
         self.system = chc_system
 
     def solve(
-        self, get_witness: bool = False, proof_format: Optional[ProofFormat] = None
+        self,
+        get_witness: bool = False,
+        proof_format: Optional[ProofFormat] = None,
+        timeout: Optional[int] = None,
     ) -> Status:
         """
         Run the solver on the provided CHC system.
@@ -119,12 +122,20 @@ class CHCSolver(ABC):
             args = [str(self._solver_path), str(input_path.name)] + args_extra
             try:
                 logging.debug(f"Running {self.NAME}: {' '.join(args)}")
-                proc = run(args, capture_output=True, text=True, check=True)
+                proc = run(
+                    args, capture_output=True, text=True, check=True, timeout=timeout
+                )
             except CalledProcessError as err:
                 raw_output = (err.stdout or "") + (err.stderr or "")
                 logging.error(f"{self.NAME} execution failed: {raw_output}")
                 self._status = Status.UNKNOWN
                 raise PyCHCSolverException(f"{self.NAME} execution failed")
+            except TimeoutExpired as err:
+                logging.error(
+                    f"{self.NAME} execution timed out after {timeout} seconds"
+                )
+                self._status = Status.UNKNOWN
+                return self._status
 
             raw_output = (proc.stdout or "").strip()
 

@@ -37,3 +37,25 @@ def Apply(pred: FNode, args: list[FNode]) -> FNode:
         raise PyCHCInvalidSystemException(
             f"Error applying predicate {pred} to arguments {args}: {e}"
         ) from e
+
+
+def Clause(head: FNode, body: Optional[FNode] = None) -> FNode:
+    """
+    Create a CHC clause from a head and an optional body.
+
+    :param head: a pysmt FNode representing the head of the clause
+    :param body: a pysmt FNode representing the body of the clause (optional)
+     if not provided, the body is assumed to be TRUE
+    :return: a pysmt FNode representing the CHC clause
+    """
+    from pysmt.shortcuts import Implies, ForAll, TRUE
+
+    if not body:
+        body = TRUE()
+    # Clauses must be implications, even when body is TRUE
+    clause = Implies(body, head)
+    is_pred = lambda x: x.is_function_application() and x.get_type() == BOOL
+    get_name = lambda x: x.function_name()
+    preds = set(map(get_name, filter(is_pred, clause.get_atoms())))
+    vars = set(clause.get_free_variables()) - preds
+    return ForAll(vars, clause) if vars else clause
