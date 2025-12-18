@@ -42,15 +42,18 @@ class GolemSolver(CHCSolver):
     NAME = "golem"
     OPTION_CLASS = GolemOptions
 
-    def decide_result(self, output: str) -> Status:
-        first = output.splitlines()[0].strip().lower() if output else ""
+    def _decide_result(self):
+        first = (
+            self._raw_output.splitlines()[0].strip().lower() if self._raw_output else ""
+        )
         if first == "sat":
-            return Status.SAT
-        if first == "unsat":
-            return Status.UNSAT
-        return Status.UNKNOWN
+            self._status = Status.SAT
+        elif first == "unsat":
+            self._status = Status.UNSAT
+        else:
+            self._status = Status.UNKNOWN
 
-    def extract_model(self, output: str) -> SatWitness:
+    def _extract_model(self) -> SatWitness:
         """
         Extract a SAT witness (model) from solver output.
 
@@ -61,7 +64,7 @@ class GolemSolver(CHCSolver):
 
         predicates: dict[str, FunctionInterpretation] = {}
 
-        lines = output.splitlines()
+        lines = self._raw_output.splitlines()
         if not lines:
             return None
         # Skip the first status line, first open and last closed parenthesis
@@ -96,15 +99,13 @@ class GolemSolver(CHCSolver):
 
         return witness
 
-    def extract_unsat_proof(
-        self, output: str, proof_format: Optional[ProofFormat]
-    ) -> UnsatWitness:
+    def _extract_unsat_proof(self) -> UnsatWitness:
         """Extract an UNSAT certificate/proof from solver output."""
 
-        lines = output.splitlines()
+        lines = self._raw_output.splitlines()
         if not lines:
             return None
         # Skip the first status line
         smt_text = "\n".join(lines[1:]).strip()
 
-        return UnsatWitness(smt_text, proof_format=proof_format)
+        return UnsatWitness(smt_text, proof_format=self._proof_format)

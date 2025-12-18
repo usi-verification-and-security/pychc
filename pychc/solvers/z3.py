@@ -9,6 +9,7 @@ from pysmt.substituter import FunctionInterpretation
 from pysmt.smtlib.parser.parser import SmtLibParser
 from pysmt.fnode import FNode
 
+from pychc.parser import CHCSmtLibParser
 from pychc.solvers.witness import ProofFormat, Status, UnsatWitness, SatWitness
 from pychc.solvers.chc_solver import CHCSolver, CHCSolverOptions
 from pychc.solvers.smt_solver import SMTSolver, SMTSolverOptions
@@ -27,42 +28,27 @@ class Z3CHCOptions(CHCSolverOptions):
         self._set_flag("fp.print_certificate=true", value)
 
 
-class Z3SmtLibParser(SmtLibParser):
-
-    def __init__(self, *args, predicates: set[FNode], **kwargs):
-        self.predicates = predicates
-        super().__init__(*args, **kwargs)
-
-    def _reset(self):
-        super()._reset()
-        for pred in self.predicates:
-            self._declare_predicate(pred)
-
-    def _declare_predicate(self, pred: FNode):
-        if pred.get_type().is_function_type():
-            self.cache.bind(
-                pred.symbol_name(), functools.partial(self._function_call_helper, pred)
-            )
-        else:
-            self.cache.bind(pred.symbol_name(), pred)
-
-
 class Z3CHCSolver(CHCSolver):
     """Solver adapter for the Z3 CHC solver."""
 
     NAME = "z3"
     OPTION_CLASS = Z3CHCOptions
 
-    def decide_result(self, output: str) -> Status:
+    def _decide_result(self):
         # certificate first and then status in last line
-        last = output.splitlines()[-1].strip().lower() if output else ""
+        last = (
+            self._raw_output.splitlines()[-1].strip().lower()
+            if self._raw_output
+            else ""
+        )
         if last == "sat":
-            return Status.SAT
-        if last == "unsat":
-            return Status.UNSAT
-        return Status.UNKNOWN
+            self._status = Status.SAT
+        elif last == "unsat":
+            self._status = Status.UNSAT
+        else:
+            self._status = Status.UNKNOWN
 
-    def extract_model(self, output: str) -> SatWitness:
+    def _extract_model(self) -> SatWitness:
         """
         Extract a SAT witness (model) from Z3 fixedpoint output.
 
@@ -70,19 +56,20 @@ class Z3CHCSolver(CHCSolver):
         FunctionInterpretation entries for each predicate.
         """
         import itertools
+        from copy import copy
         from io import StringIO
         from pysmt.rewritings import conjunctive_partition
 
         predicates: dict[str, FunctionInterpretation] = {}
 
-        lines = output.splitlines()
+        lines = self._raw_output.splitlines()
         if not lines:
             return None
         # Skip the last status line, add `(assert ...)` around the rest
         # this is a workaround to parse the output as SMT-LIB
         smt_text = "\n(assert " + "\n".join(lines[:-1]).strip() + ")"
 
-        parser = Z3SmtLibParser(predicates=self.system.get_predicates())
+        parser = CHCSmtLibParser(predicates=copy(self.system.get_predicates()))
         script = parser.get_script(StringIO(smt_text))
 
         candidates = itertools.chain(
@@ -115,9 +102,7 @@ class Z3CHCSolver(CHCSolver):
 
         return witness
 
-    def extract_unsat_proof(
-        self, output: str, proof_format: Optional[ProofFormat]
-    ) -> UnsatWitness:
+    def _extract_unsat_proof(self) -> UnsatWitness:
         """Extract an UNSAT certificate/proof from solver output."""
         raise NotImplementedError
 

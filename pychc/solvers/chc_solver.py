@@ -73,7 +73,9 @@ class CHCSolver(ABC):
 
         self.system: Optional[CHCSystem] = None
         self._status: Optional[Status] = None
+        self._raw_output: Optional[str] = None
         self._witness: Optional[Witness] = None
+        self._proof_format: Optional[ProofFormat] = None
 
         self.options: CHCSolverOptions = self.OPTION_CLASS(**options)
 
@@ -96,6 +98,7 @@ class CHCSolver(ABC):
             logging.warning("Overwriting existing CHC system in solver")
             self._witness = None
             self._status = None
+            self._raw_output = None
         self.system = chc_system
 
     def solve(
@@ -114,6 +117,7 @@ class CHCSolver(ABC):
             raise PyCHCSolverException("No CHC system loaded in solver")
 
         self.options.set_print_witness(get_witness, proof_format)
+        self._proof_format = proof_format
 
         args_extra = self.options.to_array()
 
@@ -126,8 +130,8 @@ class CHCSolver(ABC):
                     args, capture_output=True, text=True, check=True, timeout=timeout
                 )
             except CalledProcessError as err:
-                raw_output = (err.stdout or "") + (err.stderr or "")
-                logging.error(f"{self.NAME} execution failed: {raw_output}")
+                self._raw_output = (err.stdout or "") + (err.stderr or "")
+                logging.error(f"{self.NAME} execution failed: {self._raw_output}")
                 self._status = Status.UNKNOWN
                 raise PyCHCSolverException(f"{self.NAME} execution failed")
             except TimeoutExpired as err:
@@ -137,20 +141,10 @@ class CHCSolver(ABC):
                 self._status = Status.UNKNOWN
                 return self._status
 
-            raw_output = (proc.stdout or "").strip()
+            self._raw_output = (proc.stdout or "").strip()
 
             # Understand if SAT/UNSAT/UNKNOWN
-            self._status = self.decide_result(raw_output)
-
-            if not get_witness or self._status == Status.UNKNOWN:
-                self._witness = None
-                return self._status
-
-            # Extract witness
-            if self._status == Status.SAT:
-                self._witness = self.extract_model(raw_output)
-            else:
-                self._witness = self.extract_unsat_proof(raw_output, proof_format)
+            self._decide_result()
 
             return self._status
 
@@ -159,24 +153,38 @@ class CHCSolver(ABC):
         Return a model/witness. Must be called after a `solve()` with `get_witness=True`
         that returned `Status.SAT` or `Status.UNSAT`.
         """
+        if self._witness is not None:
+            return self._witness
+
+        if not self._raw_output or self._status == Status.UNKNOWN:
+            self._witness = None
+        elif self._status == Status.SAT:
+            self._witness = self._extract_model()
+        else:
+            self._witness = self._extract_unsat_proof()
+
         return self._witness
 
+    def get_status(self) -> Optional[Status]:
+        """
+        Return the solving status. Must be called after `solve()`.
+        """
+        return self._status
+
     @abstractmethod
-    def decide_result(self, output: str) -> Status:
+    def _decide_result(self):
         """
         Decide the solving result (SAT/UNSAT/UNKNOWN) from the solver output.
         """
 
     @abstractmethod
-    def extract_model(self, output: str) -> SatWitness:
+    def _extract_model(self) -> SatWitness:
         """
         Extract a SAT witness/model from the solver output.
         """
 
     @abstractmethod
-    def extract_unsat_proof(
-        self, output: str, proof_format: Optional[ProofFormat]
-    ) -> UnsatWitness:
+    def _extract_unsat_proof(self) -> UnsatWitness:
         """
         Extract an UNSAT proof from the solver output.
         """

@@ -7,7 +7,6 @@ from pathlib import Path
 from typing import Optional
 
 from pysmt.shortcuts import ForAll
-from pysmt.typing import FunctionType
 from pysmt.logics import Logic
 from pysmt.fnode import FNode
 from pysmt.smtlib.printers import SmtPrinter
@@ -26,10 +25,10 @@ class CHCSystem:
     @classmethod
     def load_from_smtlib(cls, path: Path) -> CHCSystem:
         """Load a CHC system from an SMT-LIB file."""
-        from pychc.parser import CHCParser
+        from pychc.parser import CHCSmtLibParser
         from pysmt.oracles import get_logic
 
-        parser = CHCParser()
+        parser = CHCSmtLibParser()
         script = parser.get_script_fname(str(path))
 
         # helper
