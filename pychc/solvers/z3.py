@@ -1,37 +1,18 @@
 from __future__ import annotations
 
+import functools
 from pathlib import Path
 from typing import Optional
 
 from pysmt.logics import QF_LRA, QF_LIA, Logic
 from pysmt.substituter import FunctionInterpretation
 from pysmt.smtlib.parser.parser import SmtLibParser
+from pysmt.fnode import FNode
 
 from pychc.solvers.witness import ProofFormat, Status, UnsatWitness, SatWitness
 from pychc.solvers.chc_solver import CHCSolver, CHCSolverOptions
 from pychc.solvers.smt_solver import SMTSolver, SMTSolverOptions
 from pychc.exceptions import PyCHCInvalidResultException, PyCHCSolverException
-
-
-class Z3SmtLibParser(SmtLibParser):
-    """Custom SMT-LIB parser for Z3 output."""
-
-    def __init__(self, *args, predicates, **kwargs):
-        super().__init__(*args, **kwargs)
-        mgr = self.env.formula_manager
-
-        def _mk_apply(pred):
-            def _apply(*args):
-                return mgr.Function(pred, list(args))
-
-            return _apply
-
-        self.interpreted.update(
-            {
-                pred.symbol_name(): self._operator_adapter(_mk_apply(pred))
-                for pred in predicates
-            }
-        )
 
 
 class Z3CHCOptions(CHCSolverOptions):
@@ -44,6 +25,26 @@ class Z3CHCOptions(CHCSolverOptions):
         if proof_format:
             raise PyCHCSolverException(f"Z3 only supports its native proof format.")
         self._set_flag("fp.print_certificate=true", value)
+
+
+class Z3SmtLibParser(SmtLibParser):
+
+    def __init__(self, *args, predicates: set[FNode], **kwargs):
+        self.predicates = predicates
+        super().__init__(*args, **kwargs)
+
+    def _reset(self):
+        super()._reset()
+        for pred in self.predicates:
+            self._declare_predicate(pred)
+
+    def _declare_predicate(self, pred: FNode):
+        if pred.get_type().is_function_type():
+            self.cache.bind(
+                pred.symbol_name(), functools.partial(self._function_call_helper, pred)
+            )
+        else:
+            self.cache.bind(pred.symbol_name(), pred)
 
 
 class Z3CHCSolver(CHCSolver):
@@ -68,7 +69,9 @@ class Z3CHCSolver(CHCSolver):
         Parses equalities of the form `(= (pred args...) body)` and builds
         FunctionInterpretation entries for each predicate.
         """
+        import itertools
         from io import StringIO
+        from pysmt.rewritings import conjunctive_partition
 
         predicates: dict[str, FunctionInterpretation] = {}
 
@@ -77,30 +80,32 @@ class Z3CHCSolver(CHCSolver):
             return None
         # Skip the last status line, add `(assert ...)` around the rest
         # this is a workaround to parse the output as SMT-LIB
-        smt_text = "(assert " + "\n".join(lines[:-1]).strip() + ")"
+        smt_text = "\n(assert " + "\n".join(lines[:-1]).strip() + ")"
 
         parser = Z3SmtLibParser(predicates=self.system.get_predicates())
         script = parser.get_script(StringIO(smt_text))
 
-        annotations = script.annotations
-        definitions = annotations.all_annotated_formulae("weight")
-        for definition in definitions:
-            if not definition.is_iff():
-                continue
-            lhs = definition.arg(0)
-            rhs = definition.arg(1)
+        candidates = itertools.chain(
+            script.annotations.all_annotated_formulae("weight"),
+            conjunctive_partition(script.get_last_formula()),
+        )
+        for iff in filter(lambda x: x.is_iff(), candidates):
+            lhs, rhs = iff.args()
             if not lhs.is_function_application():
-                continue
-            pred_name = lhs.function_name()
-            if pred_name not in self.system.get_predicates():
-                raise PyCHCInvalidResultException(f"Unknown predicate {pred_name}")
-            formal_params = lhs.args()
-            interpretation = FunctionInterpretation(
-                formal_params=formal_params,
-                function_body=rhs,
-                allow_free_vars=False,
-            )
-            predicates[pred_name.symbol_name()] = interpretation
+                if lhs not in self.system.get_predicates():
+                    continue
+                predicates[lhs.symbol_name()] = rhs
+            else:
+                pred_symbol = lhs.function_name()
+                if pred_symbol not in self.system.get_predicates():
+                    continue
+                formal_params = lhs.args()
+                interpretation = FunctionInterpretation(
+                    formal_params=formal_params,
+                    function_body=rhs,
+                    allow_free_vars=False,
+                )
+                predicates[pred_symbol.symbol_name()] = interpretation
 
         witness = SatWitness(predicates)
         if not self.system.check_witness_consistency(witness):

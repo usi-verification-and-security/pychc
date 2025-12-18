@@ -14,10 +14,6 @@ def Predicate(name: str, arg_types: list[PySMTType]) -> FNode:
     A predicate is a function symbol returning Bool with the given argument types.
     """
 
-    if not arg_types:
-        raise PyCHCInvalidSystemException(
-            "Predicate must have at least one argument type"
-        )
     return Symbol(name, FunctionType(BOOL, arg_types))
 
 
@@ -31,6 +27,8 @@ def Apply(pred: FNode, args: list[FNode]) -> FNode:
     :return: a pysmt FNode representing the application of the predicate to the arguments
     """
 
+    if not args:
+        return pred
     try:
         return Function(pred, args)
     except Exception as e:
@@ -54,8 +52,4 @@ def Clause(head: FNode, body: Optional[FNode] = None) -> FNode:
         body = TRUE()
     # Clauses must be implications, even when body is TRUE
     clause = Implies(body, head)
-    is_pred = lambda x: x.is_function_application() and x.get_type() == BOOL
-    get_name = lambda x: x.function_name()
-    preds = set(map(get_name, filter(is_pred, clause.get_atoms())))
-    vars = set(clause.get_free_variables()) - preds
-    return ForAll(vars, clause) if vars else clause
+    return clause

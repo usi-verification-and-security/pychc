@@ -6,6 +6,8 @@ import logging
 from pathlib import Path
 from typing import Optional
 
+from pysmt.shortcuts import ForAll
+from pysmt.typing import FunctionType
 from pysmt.logics import Logic
 from pysmt.fnode import FNode
 from pysmt.smtlib.printers import SmtPrinter
@@ -21,8 +23,6 @@ class CHCSystem:
         self.predicates: set[FNode] = set()
         self.clauses: set[FNode] = set()
 
-        self._is_linear: bool = True
-
     @classmethod
     def load_from_smtlib(cls, path: Path) -> CHCSystem:
         """Load a CHC system from an SMT-LIB file."""
@@ -32,16 +32,13 @@ class CHCSystem:
         parser = CHCParser()
         script = parser.get_script_fname(str(path))
 
-        # collect predicates
+        # helper
         get_content = lambda d: d.args[0]
-        decls = map(get_content, script.filter_by_command_name(("declare-fun")))
-        is_pred_decl = (
-            lambda d: d.get_type().is_function_type()
-            and d.get_type().return_type == BOOL
-        )
-        predicates = set(filter(is_pred_decl, decls))
 
-        # collect clauses
+        # collect declared predicates and asserted clauses
+        predicates = set(
+            map(get_content, script.filter_by_command_name(("declare-fun")))
+        )
         clauses = list(map(get_content, script.filter_by_command_name("assert")))
 
         # determine logic
@@ -69,13 +66,10 @@ class CHCSystem:
             raise PyCHCInvalidSystemException(
                 f"Error getting type of predicate {pred}: {e}"
             ) from e
-        if not type_.is_function_type():
+        is_fun = type_.is_function_type() and type_.return_type == BOOL
+        if type_ != BOOL and not is_fun:
             raise PyCHCInvalidSystemException(
-                f"Predicate {pred} must have a function type."
-            )
-        if type_.return_type != BOOL:
-            raise PyCHCInvalidSystemException(
-                f"Predicate {pred} must have Boolean return type."
+                f"Predicate {pred} {type_} must be a Boolean function."
             )
         if pred in self.predicates:
             raise PyCHCInvalidSystemException(f"Predicate {pred} already declared.")
@@ -93,29 +87,40 @@ class CHCSystem:
         """
         from pysmt.oracles import get_logic
 
-        forall_body = clause.arg(0) if clause.is_forall() else clause
-        if not forall_body.is_implies():
-            raise PyCHCInvalidSystemException(
-                f"Clause {clause} must be an implication."
+        is_function = lambda x: x.get_type().is_function_type()
+
+        if clause.is_forall():
+            open_clause = clause.arg(0)
+        else:
+            open_clause = clause
+            # do not quantify function variables
+            internal_vars = {
+                v
+                for v in open_clause.get_free_variables()
+                if v not in self.predicates and not is_function(v)
+            }
+            clause = ForAll(internal_vars, open_clause)
+
+        if set(clause.get_free_variables()) - self.predicates:
+            logging.warning(
+                f"Clause {clause} has free variables outside of declared predicates."
             )
-        clause_logic = get_logic(forall_body)
+
+        clause_logic = get_logic(open_clause)
         if not (clause_logic <= self.logic):
             raise PyCHCInvalidSystemException(
                 f"Clause {clause} (of logic {clause_logic}) outside of system logic {self.logic}"
             )
 
-        head, body = forall_body.args()
-        is_pred = lambda x: x.is_function_application() and x.get_type() == BOOL
-        head_preds = list(filter(is_pred, head.get_atoms()))
-        body_preds = set(filter(is_pred, body.get_atoms()))
-        if len(head_preds) > 1:
+        if not open_clause.is_implies():
             raise PyCHCInvalidSystemException(
-                f"Head {head} must be a single predicate."
+                f"Clause {clause} must be an implication."
             )
-        all_preds = itertools.chain(head_preds, body_preds)
-        if any(p.function_name() not in self.predicates for p in all_preds):
+
+        head = open_clause.arg(1)
+        if len(self.predicates & head.get_free_variables()) > 1:
             raise PyCHCInvalidSystemException(
-                f"Clause {clause} uses undeclared predicates."
+                f"Clause {clause} has multiple predicates in head."
             )
         self.clauses.add(clause)
 
@@ -138,35 +143,51 @@ class CHCSystem:
         ), "Given model is not consistent with the CHC system predicates."
 
         interpretations = {
-            p: model.definitions[p.symbol_name()] for p in self.get_predicates()
+            p: model.definitions[p.symbol_name()]
+            for p in self.get_predicates()
+            if p.get_type().is_function_type()
+        }
+        substitutions = {
+            p: model.definitions[p.symbol_name()]
+            for p in self.get_predicates()
+            if not p.get_type().is_function_type()
         }
 
         def _substitute_clause(clause: FNode) -> FNode:
             if clause.is_forall():
                 clause = clause.arg(0)
-            return clause.substitute(subs={}, interpretations=interpretations)
+            return clause.substitute(
+                subs=substitutions, interpretations=interpretations
+            )
 
         return set(map(_substitute_clause, self.get_clauses()))
 
     def _check_sat_witness_consistency(self, witness: SatWitness) -> bool:
         """Check whether the given SAT witness is syntactically consistent."""
+        from pysmt.substituter import FunctionInterpretation
+
         for pred in self.get_predicates():
             pred_name = pred.symbol_name()
             if pred_name not in witness.definitions:
                 logging.error(f"Missing interpretation for predicate {pred_name}")
                 return False
             interpretation = witness.definitions[pred_name]
-            if interpretation.function_body.get_type() != BOOL:
+            if isinstance(interpretation, FunctionInterpretation):
+                ret_type = interpretation.function_body.get_type()
+            else:
+                ret_type = interpretation.get_type()
+            if ret_type != BOOL:
                 logging.error(f"Interpretation for {pred_name} is not Boolean")
                 return False
-            pred_arg_types = pred.get_type().param_types
-            if len(interpretation.formal_params) != len(pred_arg_types):
-                logging.error(f"Mismatch in number of parameters for {pred_name}")
-                return False
-            for i, param in enumerate(interpretation.formal_params):
-                if param.get_type() != pred.get_type().param_types[i]:
-                    logging.error(f"Type mismatch for parameter {i} of {pred_name}")
+            if pred.get_type().is_function_type():
+                pred_arg_types = pred.get_type().param_types
+                if len(interpretation.formal_params) != len(pred_arg_types):
+                    logging.error(f"Mismatch in number of parameters for {pred_name}")
                     return False
+                for i, param in enumerate(interpretation.formal_params):
+                    if param.get_type() != pred.get_type().param_types[i]:
+                        logging.error(f"Type mismatch for parameter {i} of {pred_name}")
+                        return False
         return True
 
     def _check_unsat_witness_consistency(self, witness: UnsatWitness) -> bool:
@@ -210,7 +231,10 @@ class CHCSystem:
                 )
             )
             for pred in used_preds:
-                args_str = " ".join(str(arg) for arg in pred.get_type().param_types)
+                if pred.get_type().is_function_type():
+                    args_str = " ".join(str(arg) for arg in pred.get_type().param_types)
+                else:
+                    args_str = " "
                 f.write("(declare-fun ")
                 printer.printer(pred)
                 f.write(f" ({args_str}) Bool)\n")

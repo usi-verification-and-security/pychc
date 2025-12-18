@@ -76,9 +76,14 @@ class GolemSolver(CHCSolver):
                 if args[2] != BOOL:
                     raise PyCHCInvalidResultException("Cannot parse: \n" + smt_text)
                 name = args[0]
-                interpretation = FunctionInterpretation(
-                    formal_params=args[1], function_body=args[3], allow_free_vars=False
-                )
+                params = args[1]
+                body = args[3]
+                if not params:
+                    interpretation = body
+                else:
+                    interpretation = FunctionInterpretation(
+                        formal_params=params, function_body=body, allow_free_vars=False
+                    )
                 predicates[name] = interpretation
             else:
                 logging.warning(f"Skipping malformed declaration? {decl}")

@@ -22,9 +22,9 @@ from pychc.exceptions import PyCHCInvalidResultException
 
 from pychc.tests.common import reset_pysmt_env
 
+from pychc.solvers.witness import Status
 from pychc.solvers.golem import GolemSolver
 from pychc.solvers.z3 import Z3CHCSolver, Z3SMTSolver
-
 from pychc.solvers.opensmt import OpenSMTSolver
 from pychc.solvers.cvc5 import CVC5Solver, ProofFormat
 
@@ -59,7 +59,8 @@ def run_solver(test_func):
         # Run CHC solver
         chc_solver = chc_cls()
         chc_solver.load_system(sys)
-        chc_solver.solve(get_witness=True)
+        status = chc_solver.solve(get_witness=True)
+        assert status == Status.SAT
         model = chc_solver.get_witness()
 
         # Instantiate SMT validator
@@ -126,4 +127,24 @@ def test_system2(chc_class, smt_class, smt_kwargs):
     sys.add_clause(Clause(body=Apply(inv1, [x]), head=Apply(inv1, [Plus(x, Int(1))])))
     sys.add_clause(Clause(body=Apply(inv1, [x]), head=Apply(inv2, [Minus(Int(0), x)])))
     sys.add_clause(Clause(body=And(Apply(inv2, [x]), LT(Int(0), x)), head=FALSE()))
+    return sys
+
+
+@pytest.mark.parametrize(
+    "chc_class,smt_class,smt_kwargs",
+    ALL_OPTIONS,
+)
+@reset_pysmt_env
+@run_solver
+def test_system3(chc_class, smt_class, smt_kwargs):
+    sys = CHCSystem(logic=QF_UFLIA)
+    fail = Predicate("fail", [])
+    inv = Predicate("inv", [INT])
+    x = Symbol("x", INT)
+    sys.add_predicate(fail)
+    sys.add_predicate(inv)
+    sys.add_clause(Clause(head=Apply(inv, [Int(0)])))
+    sys.add_clause(Clause(body=Apply(inv, [x]), head=Apply(inv, [Plus(x, Int(1))])))
+    sys.add_clause(Clause(body=And(Apply(inv, [x]), LT(x, Int(0))), head=fail))
+    sys.add_clause(Clause(body=Apply(fail, []), head=FALSE()))
     return sys

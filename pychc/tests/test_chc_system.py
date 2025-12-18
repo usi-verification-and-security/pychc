@@ -73,10 +73,12 @@ def test_add_predicate_valid2(chc_sys_lra):
 
 
 @reset_pysmt_env
-def test_add_predicate_invalid1(chc_sys_lia):
+@run_chc_solver
+def test_add_predicate_valid3(chc_sys_lia):
     p = Symbol("p", BOOL)
-    with pytest.raises(PyCHCInvalidSystemException):
-        chc_sys_lia.add_predicate(p)
+    chc_sys_lia.add_predicate(p)
+    assert p in chc_sys_lia.get_predicates()
+    return chc_sys_lia
 
 
 @reset_pysmt_env
@@ -147,7 +149,6 @@ def test_add_clause_valid1(chc_sys_lia):
 
     clauses = chc_sys_lia.get_clauses()
     assert len(clauses) == 1
-    assert chc_sys_lia._is_linear
     return chc_sys_lia
 
 
@@ -166,7 +167,6 @@ def test_add_clause_valid2(chc_sys_lra):
     )
     clauses = chc_sys_lra.get_clauses()
     assert len(clauses) == 1
-    assert chc_sys_lra._is_linear
     return chc_sys_lra
 
 
@@ -196,7 +196,6 @@ def test_add_clause_valid3(chc_sys_lra):
 
     clauses = chc_sys_lra.get_clauses()
     assert len(clauses) == 2
-    assert not chc_sys_lra._is_linear
     return chc_sys_lra
 
 
@@ -211,7 +210,7 @@ def test_add_clause_invalid1(chc_sys_lra):
     with pytest.raises(PyCHCInvalidSystemException):
         chc_sys_lra.add_clause(
             Clause(
-                body=And(Apply(inv2, [Real(0), Real(2)]), Apply(inv1, [x])),
+                body=Apply(inv2, [Real(0), Real(2)]),
                 head=And(
                     Apply(inv1, [Real(0)]), Apply(inv2, [Real(10), Plus(x, Real(1))])
                 ),
@@ -237,13 +236,16 @@ def test_add_clause_invalid2(chc_sys_lra):
 
 
 @reset_pysmt_env
+# No exception are raised when adding a clause with undeclared predicates
+# Warnings are logged instead.
+# This is allowing to have clauses with external functions.
+# TODO: reconsider?
 def test_add_clause_invalid3(chc_sys_lra):
     inv1 = Predicate("inv1", [REAL])
     x = Symbol("x", REAL)
-    with pytest.raises(PyCHCInvalidSystemException):
-        chc_sys_lra.add_clause(
-            Clause(body=Apply(inv1, [x]), head=Apply(inv1, [Plus(x, Real(1))]))
-        )
+    chc_sys_lra.add_clause(
+        Clause(body=Apply(inv1, [x]), head=Apply(inv1, [Plus(x, Real(1))]))
+    )
 
 
 @reset_pysmt_env
