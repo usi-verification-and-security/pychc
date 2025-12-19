@@ -4,6 +4,7 @@ from typing import Optional
 
 from pysmt.fnode import FNode
 from pysmt.shortcuts import Function, Symbol
+from pysmt.environment import get_env
 from pysmt.typing import BOOL, FunctionType, PySMTType
 
 from pychc.exceptions import PyCHCInvalidSystemException
@@ -53,3 +54,17 @@ def Clause(head: FNode, body: Optional[FNode] = None) -> FNode:
     # Clauses must be implications, even when body is TRUE
     clause = Implies(body, head)
     return clause
+
+
+def Mod(left: FNode, right: FNode) -> FNode:
+    """
+    Integer modulus operator shortcut.
+    """
+    return get_env().formula_manager.Mod(left, right)
+
+
+def IntDiv(left: FNode, right: FNode) -> FNode:
+    """
+    Integer division operator shortcut (SMT-LIB: div).
+    """
+    return get_env().formula_manager.IntDiv(left, right)

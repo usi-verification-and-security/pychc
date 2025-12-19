@@ -1,7 +1,6 @@
 import functools
 
 from pysmt.smtlib.parser import SmtLibParser
-from pysmt.typing import FunctionType, INT
 from pysmt.fnode import FNode
 
 
@@ -11,13 +10,11 @@ class CHCSmtLibParser(SmtLibParser):
     def __init__(self, *args, predicates: set[FNode] = set(), **kwargs):
         self.predicates = predicates
         super().__init__(*args, **kwargs)
+
+        # add support for `div` and `mod` operators
         mgr = self.env.formula_manager
-
-        self.interpreted["div"] = self._operator_adapter(mgr.Div)
-
-        mod = mgr.Symbol("mod", FunctionType(INT, [INT, INT]))
-        self.predicates.add(mod)
-        self._declare_predicate(mod)
+        self.interpreted["div"] = self._operator_adapter(mgr.IntDiv)
+        self.interpreted["mod"] = self._operator_adapter(mgr.Mod)
 
     def _reset(self):
         super()._reset()
