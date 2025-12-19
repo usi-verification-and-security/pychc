@@ -23,12 +23,18 @@ from pychc.exceptions import PyCHCInvalidResultException
 from pychc.tests.common import reset_pysmt_env
 
 from pychc.solvers.witness import Status
+from pychc.solvers.eldarica import EldaricaSolver
 from pychc.solvers.golem import GolemSolver
 from pychc.solvers.z3 import Z3CHCSolver, Z3SMTSolver
 from pychc.solvers.opensmt import OpenSMTSolver
 from pychc.solvers.cvc5 import CVC5Solver, ProofFormat
 
 ALL_OPTIONS = [
+    (EldaricaSolver, OpenSMTSolver, None),
+    (EldaricaSolver, Z3SMTSolver, None),
+    (EldaricaSolver, CVC5Solver, ProofFormat.ALETHE),
+    (EldaricaSolver, CVC5Solver, ProofFormat.LFSC),
+    (EldaricaSolver, CVC5Solver, ProofFormat.DOT),
     (GolemSolver, OpenSMTSolver, None),
     (GolemSolver, Z3SMTSolver, None),
     (GolemSolver, CVC5Solver, ProofFormat.ALETHE),
