@@ -4,6 +4,7 @@ import itertools
 import logging
 
 from pathlib import Path
+import tempfile
 from typing import Optional
 
 from pysmt.shortcuts import ForAll
@@ -21,6 +22,7 @@ class CHCSystem:
         self.logic: Logic = logic
         self.predicates: set[FNode] = set()
         self.clauses: set[FNode] = set()
+        self.smt2file: Optional[Path] = None
 
     @classmethod
     def load_from_smtlib(cls, path: Path) -> CHCSystem:
@@ -48,7 +50,14 @@ class CHCSystem:
         [sys.add_predicate(pred) for pred in predicates]
         [sys.add_clause(clause) for clause in clauses]
 
+        sys.smt2file = Path(path)
+
         return sys
+
+    def invalidate_smt2file(self) -> None:
+        if self.smt2file is not None:
+            self.smt2file.unlink()
+        self.smt2file = None
 
     def get_logic(self) -> Optional[Logic]:
         return self.logic
@@ -59,6 +68,7 @@ class CHCSystem:
 
         :param pred: a pysmt Symbol of type FunctionType
         """
+        self.invalidate_smt2file()
         try:
             type_ = pred.get_type()
         except Exception as e:
@@ -85,6 +95,8 @@ class CHCSystem:
         It must have no free variables and use a compliant logic.
         """
         from pysmt.oracles import get_logic
+
+        self.invalidate_smt2file()
 
         is_function = lambda x: x.get_type().is_function_type()
 
@@ -206,6 +218,14 @@ class CHCSystem:
             return self._check_unsat_witness_consistency(witness)
         return True
 
+    def get_smt2file(self) -> Path:
+        if self.smt2file is None or not self.smt2file.exists():
+            self.smt2file = Path(
+                tempfile.NamedTemporaryFile("w", suffix=".smt2", delete=False).name
+            )
+            self.serialize(self.smt2file)
+        return self.smt2file
+
     def serialize(self, out_path: Path) -> Path:
         """
         Serialize the system to SMT-LIB at `out_path`.
@@ -243,6 +263,7 @@ class CHCSystem:
                 printer.printer(clause)
                 f.write(")\n")
             f.write("(check-sat)\n")
+        self.smt2file = out_path
         return out_path
 
 
