@@ -19,12 +19,16 @@ from pychc.exceptions import PyCHCInvalidResultException, PyCHCSolverException
 class Z3CHCOptions(CHCSolverOptions):
     """Options passed to the Z3 process via command line flags."""
 
+    def __init__(self, **base_options):
+        super().__init__(**base_options)
+        self._set_flag("fp.spacer.global=true", True)
+
     def set_print_witness(
         self, value: bool = True, proof_format: Optional[ProofFormat] = None
     ):
-        """Enable certificate printing for fixedpoint: fp.print_certificate=true"""
+        """Enable certificate printing"""
         if proof_format:
-            raise PyCHCSolverException(f"Z3 only supports its native proof format.")
+            raise PyCHCSolverException("Z3 does not support custom proof formats.")
         self._set_flag("fp.print_certificate=true", value)
 
 
@@ -113,11 +117,6 @@ class Z3SMTOptions(SMTSolverOptions):
     """
 
     PROOF_FORMATS = set()
-
-    def __init__(self, proof_format: Optional[ProofFormat] = None, **base_options):
-        super().__init__(**base_options)
-        if proof_format:
-            raise ValueError(f"Z3 only supports its native proof format.")
 
 
 class Z3SMTSolver(SMTSolver):

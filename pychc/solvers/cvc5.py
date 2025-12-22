@@ -12,19 +12,9 @@ from pychc.solvers.smt_solver import SMTSolver, SMTSolverOptions
 class CVC5Options(SMTSolverOptions):
     """
     Options for CVC5 SMT solver.
-
-    Extends SMTSolverOptions with `proof_format` to select the proof output format.
     """
 
     PROOF_FORMATS = {ProofFormat.ALETHE, ProofFormat.LFSC, ProofFormat.DOT}
-
-    def __init__(
-        self, proof_format: Optional[ProofFormat] = ProofFormat.ALETHE, **base_options
-    ):
-        super().__init__(**base_options)
-        if proof_format and proof_format not in self.PROOF_FORMATS:
-            raise ValueError(f"Unsupported proof format for CVC5: {proof_format}")
-        self.proof_format: Optional[ProofFormat] = proof_format
 
     def __call__(self, solver):
         # Base options (including produce-proofs)
