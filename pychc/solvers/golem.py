@@ -27,13 +27,15 @@ class GolemOptions(CHCSolverOptions):
         self, value: bool = True, proof_format: Optional[ProofFormat] = None
     ):
         """Enable `--print-witness` to request witness output."""
-        if proof_format:
+        self._set_flag("--print-witness", value)
+        if not value or proof_format is None:
+            self._remove_option("--proof-format")
+        else:
             if proof_format not in self.PROOF_FORMATS:
                 raise PyCHCSolverException(
                     f"Unsupported proof format for Golem: {proof_format}"
                 )
             self._set_option(f"--proof-format", proof_format.value)
-        self._set_flag("--print-witness", value)
 
 
 class GolemSolver(CHCSolver):
@@ -108,4 +110,4 @@ class GolemSolver(CHCSolver):
         # Skip the first status line
         smt_text = "\n".join(lines[1:]).strip()
 
-        return UnsatWitness(smt_text, proof_format=self._proof_format)
+        return UnsatWitness(smt_text, proof_format=self.proof_format)

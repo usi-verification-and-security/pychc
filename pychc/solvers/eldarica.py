@@ -25,7 +25,9 @@ class EldaricaOptions(CHCSolverOptions):
         self, value: bool = True, proof_format: Optional[ProofFormat] = None
     ):
         if proof_format:
-            raise PyCHCSolverException(f"Eldarica only supports its own proof format.")
+            raise PyCHCSolverException(
+                "Eldarica does not support custom proof formats."
+            )
         self._set_flag("-scex", value)
         self._set_flag("-ssol", value)
 

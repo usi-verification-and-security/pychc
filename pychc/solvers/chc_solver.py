@@ -9,9 +9,18 @@ from subprocess import run, CalledProcessError, TimeoutExpired
 
 from typing import Optional
 
+from pysmt.oracles import get_logic
+
+from pychc.solvers.proof_checker import ProofChecker
+from pychc.solvers.smt_solver import SMTSolver
 from pychc.solvers.witness import SatWitness, UnsatWitness, Witness, Status, ProofFormat
 from pychc.chc_system import CHCSystem
-from pychc.exceptions import PyCHCSolverException, PyCHCInternalException
+from pychc.exceptions import (
+    PyCHCException,
+    PyCHCInvalidResultException,
+    PyCHCSolverException,
+    PyCHCInternalException,
+)
 
 
 class CHCSolverOptions(ABC):
@@ -21,12 +30,9 @@ class CHCSolverOptions(ABC):
 
     PROOF_FORMATS: set[ProofFormat] = set()
 
-    def __init__(
-        self, print_witness: bool = False, proof_format: Optional[ProofFormat] = None
-    ):
+    def __init__(self):
         self._options = {}
         self._flags = set()
-        self.set_print_witness(print_witness, proof_format)
 
     def to_array(self) -> list[str]:
         """Convert options to CLI args list."""
@@ -43,6 +49,10 @@ class CHCSolverOptions(ABC):
             self._flags.add(flag)
         else:
             self._flags.discard(flag)
+
+    def _remove_option(self, option: str):
+        if option in self._options:
+            del self._options[option]
 
     def _set_option(self, option: str, value):
         self._options[option] = value
@@ -64,7 +74,12 @@ class CHCSolver(ABC):
     NAME: str = ""
     OPTION_CLASS = CHCSolverOptions
 
-    def __init__(self, binary_path: Optional[Path] = None, **options):
+    def __init__(
+        self,
+        binary_path: Optional[Path] = None,
+        smt_validator: Optional[SMTSolver] = None,
+        proof_checker: Optional[ProofChecker] = None,
+    ):
         """
         Initialize the solver with a CHC system.
 
@@ -72,12 +87,12 @@ class CHCSolver(ABC):
         """
 
         self.system: Optional[CHCSystem] = None
+
         self._status: Optional[Status] = None
         self._raw_output: Optional[str] = None
         self._witness: Optional[Witness] = None
-        self._proof_format: Optional[ProofFormat] = None
 
-        self.options: CHCSolverOptions = self.OPTION_CLASS(**options)
+        self.options: CHCSolverOptions = self.OPTION_CLASS()
 
         if not self.NAME:
             raise PyCHCInternalException("CHCSolver.NAME must be defined by subclass")
@@ -90,6 +105,31 @@ class CHCSolver(ABC):
                 f"{self.NAME} executable not found at: {self._solver_path}"
             )
 
+        self.set_smt_validator(smt_validator)
+        self.set_proof_checker(proof_checker)
+
+    def set_smt_validator(self, smt_validator: Optional[SMTSolver]) -> None:
+        """
+        Set the underlying SMT solver to use.
+        """
+        self.smt_validator = smt_validator
+
+    def set_unsat_proof_format(self, proof_format: ProofFormat) -> None:
+        """
+        Set the proof format to use for UNSAT proofs.
+        """
+        if self.proof_checker and self.proof_checker.get_proof_format() != proof_format:
+            self.proof_checker = None
+            logging.warning("Changing proof format, unsetting existing proof checker.")
+        self.proof_format = proof_format
+
+    def set_proof_checker(self, proof_checker: Optional[ProofChecker]) -> None:
+        """
+        Set the proof checker to use for validating UNSAT proofs.
+        """
+        self.proof_checker = proof_checker
+        self.proof_format = proof_checker.get_proof_format() if proof_checker else None
+
     def load_system(self, chc_system: CHCSystem) -> None:
         """
         Load a CHC system into the solver.
@@ -101,59 +141,52 @@ class CHCSolver(ABC):
             self._raw_output = None
         self.system = chc_system
 
-    def solve(
-        self,
-        get_witness: bool = False,
-        proof_format: Optional[ProofFormat] = None,
-        timeout: Optional[int] = None,
-    ) -> Status:
+    def solve(self, timeout: Optional[int] = None) -> Status:
         """
         Run the solver on the provided CHC system.
 
-        :param get_witness: whether to create a witness/model while solving
+        :param timeout: optional timeout in seconds
+        :return: solving status (SAT/UNSAT/UNKNOWN)
         """
 
         if not self.system:
             raise PyCHCSolverException("No CHC system loaded in solver")
 
-        self.options.set_print_witness(get_witness, proof_format)
-        self._proof_format = proof_format
-
+        expected_validation = self.smt_validator or self.proof_format
+        self.options.set_print_witness(expected_validation, self.proof_format)
         args_extra = self.options.to_array()
 
-        with tempfile.NamedTemporaryFile("w", suffix=".smt2") as input_path:
-            self.system.serialize(Path(input_path.name))
-            args = [str(self._solver_path), str(input_path.name)] + args_extra
-            try:
-                logging.debug(f"Running {self.NAME}: {' '.join(args)}")
-                proc = run(
-                    args, capture_output=True, text=True, check=True, timeout=timeout
-                )
-            except CalledProcessError as err:
-                self._raw_output = (err.stdout or "") + (err.stderr or "")
-                logging.error(f"{self.NAME} execution failed: {self._raw_output}")
-                self._status = Status.UNKNOWN
-                raise PyCHCSolverException(f"{self.NAME} execution failed")
-            except TimeoutExpired as err:
-                logging.error(
-                    f"{self.NAME} execution timed out after {timeout} seconds"
-                )
-                self._status = Status.UNKNOWN
-                return self._status
+        input_file = self.system.get_smt2file()
 
-            self._raw_output = (proc.stdout or "").strip()
-
-            # Understand if SAT/UNSAT/UNKNOWN
-            self._decide_result()
-
+        args = [str(self._solver_path), str(input_file)] + args_extra
+        try:
+            logging.debug(f"Running {self.NAME}: {' '.join(args)}")
+            proc = run(
+                args, capture_output=True, text=True, check=True, timeout=timeout
+            )
+        except CalledProcessError as err:
+            self._raw_output = (err.stdout or "") + (err.stderr or "")
+            logging.error(f"{self.NAME} execution failed: {self._raw_output}")
+            self._status = Status.UNKNOWN
+            raise PyCHCSolverException(f"{self.NAME} execution failed")
+        except TimeoutExpired as err:
+            logging.error(f"{self.NAME} execution timed out after {timeout} seconds")
+            self._status = Status.UNKNOWN
             return self._status
+
+        self._raw_output = (proc.stdout or "").strip()
+
+        # Understand if SAT/UNSAT/UNKNOWN
+        self._decide_result()
+
+        return self._status
 
     def get_witness(self) -> Optional[Witness]:
         """
         Return a model/witness. Must be called after a `solve()` with `get_witness=True`
         that returned `Status.SAT` or `Status.UNSAT`.
         """
-        if self._witness is not None:
+        if self._witness:
             return self._witness
 
         if not self._raw_output or self._status == Status.UNKNOWN:
@@ -164,6 +197,74 @@ class CHCSolver(ABC):
             self._witness = self._extract_unsat_proof()
 
         return self._witness
+
+    def validate_witness(self):
+        if not self._witness:
+            self.get_witness()
+
+        if self._status == Status.SAT:
+            self._validate_sat_witness()
+        elif self._status == Status.UNSAT:
+            self._validate_unsat_witness()
+        else:
+            raise PyCHCException("Cannot validate witness for UNKNOWN status.")
+        return self._witness
+
+    def _validate_unsat_witness(self):
+        assert self._status == Status.UNSAT
+        assert self._witness
+
+        if not self.proof_checker:
+            raise PyCHCException("No proof checker set for requested proof validation.")
+
+        self.proof_file = Path(tempfile.NamedTemporaryFile("w", suffix=".proof").name)
+        with open(self.proof_file, "w") as pf:
+            pf.write(self._witness.text)
+
+        self.proof_checker.validate(
+            proof_file=self.proof_file, smt2file=self.system.get_smt2file()
+        )
+
+        # if everything went fine, delete temp file
+        self.proof_file.unlink()
+
+    def _validate_sat_witness(self):
+        assert self._status == Status.SAT
+        assert self._witness
+
+        if not self.smt_validator:
+            raise PyCHCException(
+                "No SMT validator set for requested witness validation."
+            )
+        if not self.smt_validator.proof_checker:
+            logging.warning(
+                f"No proof checker set for SMT solver {self.smt_validator.NAME}, skipping proof validation"
+            )
+
+        queries = self.system.get_validate_model_queries(self._witness)
+        for query in queries:
+
+            if get_logic(query).is_quantified():
+                from pysmt.shortcuts import QuantifierEliminator
+
+                logging.warning(
+                    "Performing quantifier elimination for witness validation."
+                )
+                qe = QuantifierEliminator(name="z3")
+                query = qe.eliminate_quantifiers(query)
+
+            if not self.smt_validator.is_valid(query):
+                raise PyCHCInvalidResultException(
+                    f"Solver {self.NAME} produced an invalid model for the system."
+                )
+            if self.smt_validator.proof_checker:
+                if not self.smt_validator.is_valid_proof():
+                    raise PyCHCInvalidResultException(
+                        f"SMT solver {self.smt_validator.NAME} produced an invalid proof."
+                    )
+            else:
+                # TODO: make the proof available
+                pass
 
     def get_status(self) -> Optional[Status]:
         """
