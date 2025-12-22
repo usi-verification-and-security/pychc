@@ -59,23 +59,11 @@ def run_solver(test_func):
 
         chc_solver = Z3CHCSolver()
         chc_solver.load_system(sys)
-        status = chc_solver.solve(get_witness=True)
-        assert status == Status.SAT
-        model = chc_solver.get_witness()
         validator = Z3SMTSolver(logic=LIA)
-        queries = sys.get_validate_model_queries(model)
-        assert queries
-        for query in queries:
-            logging.info(query.serialize())
-            if not validator.is_valid(query):
-                raise PyCHCInvalidResultException(
-                    f"Solver {Z3CHCSolver.NAME} produced an invalid model for the system."
-                )
-            proof = validator.get_proof()
-            if not proof:
-                raise PyCHCInvalidResultException(
-                    f"Solver {Z3SMTSolver.NAME} produces a null proof."
-                )
+        chc_solver.set_smt_validator(validator)
+        status = chc_solver.solve()
+        assert status == Status.SAT
+        chc_solver.validate_witness()
 
     return _wrapper
 
@@ -147,21 +135,10 @@ SMTLIB_BENCHMARKS = list(SMTLIB_DIR.glob("*.smt2"))
 
 @pytest.mark.parametrize("path", SMTLIB_BENCHMARKS, ids=str)
 @reset_pysmt_env
+@run_solver
 def test_mod_smtlib_files(path: Path):
     if not path.exists():
         pytest.skip("No SMT-LIB mod benchmarks available yet")
 
     sys = CHCSystem.load_from_smtlib(path)
-    chc = Z3CHCSolver()
-    chc.load_system(sys)
-    status = chc.solve(get_witness=True, timeout=5)
-    if status == Status.SAT:
-        model = chc.get_witness()
-        assert model is not None
-        # Quick validation with Z3 as in other tests
-        queries = sys.get_validate_model_queries(model)
-        assert queries
-        validator = Z3SMTSolver(logic=LIA)
-        for q in queries:
-            logging.info(q.serialize())
-            assert validator.is_valid(q)
+    return sys

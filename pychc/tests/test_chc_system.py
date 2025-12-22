@@ -30,7 +30,7 @@ def run_chc_solver(test_func):
 
         solver = GolemSolver()
         solver.load_system(sys)
-        solver.solve(get_witness=False)
+        solver.solve()
 
     return _wrapper
 

@@ -22,12 +22,14 @@ from pychc.exceptions import PyCHCInvalidResultException
 
 from pychc.tests.common import reset_pysmt_env
 
-from pychc.solvers.witness import Status
+from pychc.solvers.witness import Status, ProofFormat
 from pychc.solvers.eldarica import EldaricaSolver
 from pychc.solvers.golem import GolemSolver
 from pychc.solvers.z3 import Z3CHCSolver, Z3SMTSolver
 from pychc.solvers.opensmt import OpenSMTSolver
-from pychc.solvers.cvc5 import CVC5Solver, ProofFormat
+from pychc.solvers.cvc5 import CVC5Solver
+from pychc.solvers.carcara import Carcara
+
 
 ALL_OPTIONS = [
     (EldaricaSolver, OpenSMTSolver, None),
@@ -64,44 +66,26 @@ def run_solver(test_func):
 
         # Run CHC solver
         chc_solver = chc_cls()
-        chc_solver.load_system(sys)
-        status = chc_solver.solve(get_witness=True)
-        assert status == Status.SAT
-        model = chc_solver.get_witness()
 
         # Instantiate SMT validator
-        validator = smt_cls(logic=sys.get_logic(), proof_format=proof)
+        proof_checker = Carcara() if proof == ProofFormat.ALETHE else None
+        smt_validator = smt_cls(logic=sys.get_logic(), proof_checker=proof_checker)
+        chc_solver.set_smt_validator(smt_validator)
 
-        # Z3 might return quantified interpretations for the predicates
-        # TODO: check if performing QE with z3 is ok for the certification purposes
-        qe = QuantifierEliminator(name="z3")
+        chc_solver.load_system(sys)
+        status = chc_solver.solve()
+        assert status == Status.SAT
 
-        # Validate model
-        queries = sys.get_validate_model_queries(model)
-        assert queries
-        for query in queries:
-            logging.info(query.serialize())
-            query_logic = get_logic(query)
-            if query_logic.is_quantified():
-                query = qe.eliminate_quantifiers(query)
-                logging.warning("Removed quantifiers from query")
-
-            if not validator.is_valid(query):
-                raise PyCHCInvalidResultException(
-                    f"Solver {chc_cls.NAME} produced an invalid model for the system."
-                )
-            proof = validator.get_proof()
-            if not proof:
-                raise PyCHCInvalidResultException(
-                    f"Solver {smt_cls.NAME} produces a null proof."
-                )
+        chc_solver.validate_witness()
+        witness = chc_solver.get_witness()
+        assert witness is not None
 
     return _wrapper
 
 
 @pytest.mark.parametrize(
-    "chc_class,smt_class,smt_kwargs",
-    ALL_OPTIONS,
+    argnames=("chc_class", "smt_class", "smt_kwargs"),
+    argvalues=ALL_OPTIONS,
 )
 @reset_pysmt_env
 @run_solver
@@ -117,8 +101,8 @@ def test_system1(chc_class, smt_class, smt_kwargs):
 
 
 @pytest.mark.parametrize(
-    "chc_class,smt_class,smt_kwargs",
-    ALL_OPTIONS,
+    argnames=("chc_class", "smt_class", "smt_kwargs"),
+    argvalues=ALL_OPTIONS,
 )
 @reset_pysmt_env
 @run_solver
@@ -137,8 +121,8 @@ def test_system2(chc_class, smt_class, smt_kwargs):
 
 
 @pytest.mark.parametrize(
-    "chc_class,smt_class,smt_kwargs",
-    ALL_OPTIONS,
+    argnames=("chc_class", "smt_class", "smt_kwargs"),
+    argvalues=ALL_OPTIONS,
 )
 @reset_pysmt_env
 @run_solver

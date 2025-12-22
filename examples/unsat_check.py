@@ -1,8 +1,9 @@
 from pathlib import Path
 
-from pychc.solvers.witness import Status
-from pychc.solvers.golem import GolemSolver, ProofFormat
-from pychc.solvers.opensmt import OpenSMTSolver
+from pychc.solvers.witness import Status, ProofFormat
+from pychc.solvers.golem import GolemSolver
+from pychc.solvers.cvc5 import CVC5Solver
+from pychc.solvers.carcara import Carcara
 from pychc.chc_system import CHCSystem
 
 from pysmt.typing import INT, REAL
@@ -55,11 +56,17 @@ sys = CHCSystem.load_from_smtlib(tmp)
 # otherwise, set `binary_path` argument to the GolemSolver constructor
 solver = GolemSolver()
 solver.load_system(sys)
-status = solver.solve(get_witness=True, proof_format=ProofFormat.ALETHE)
+
+proof_checker = Carcara()
+smt_validator = CVC5Solver(logic=QF_UFLIA, proof_checker=proof_checker)
+
+solver.set_smt_validator(smt_validator)
+solver.set_proof_checker(proof_checker)
+
+status = solver.solve()
 print(f"Solving status: {status}")
+assert status == Status.UNSAT
 
-witness = solver.get_witness()
+solver.validate_witness()
 
-assert status == Status.UNSAT and witness is not None
-    
-print(f"UNSAT witness:\n{witness.text}")
+print("UNSAT witness validated successfully.")

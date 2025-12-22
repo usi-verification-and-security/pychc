@@ -22,6 +22,7 @@ from pychc.solvers.witness import ProofFormat, Status
 from pychc.tests.common import reset_pysmt_env
 
 from pychc.solvers.golem import GolemSolver
+from pychc.solvers.carcara import Carcara
 
 ALL_OPTIONS = [
     (GolemSolver, ProofFormat.ALETHE, True),
@@ -49,15 +50,23 @@ def run_solver(test_func):
         chc_solver = chc_cls()
         chc_solver.load_system(sys)
 
+        if proof == ProofFormat.ALETHE:
+            proof_checker = Carcara()
+            chc_solver.set_proof_checker(proof_checker)
+        else:
+            chc_solver.set_unsat_proof_format(proof)
+
         if not expected_ok:
             with pytest.raises(PyCHCSolverException):
-                chc_solver.solve(get_witness=True, proof_format=proof)
+                chc_solver.solve()
             return
 
-        status = chc_solver.solve(get_witness=True, proof_format=proof)
+        status = chc_solver.solve()
         assert status == Status.UNSAT, "Expected UNSAT result from the solver"
         model = chc_solver.get_witness()
-        assert model is not None, "Expected a witness/model from the solver"
+        assert model, "Expected a witness/model from the solver"
+        if proof == ProofFormat.ALETHE:
+            chc_solver.validate_witness()
 
     return _wrapper
 

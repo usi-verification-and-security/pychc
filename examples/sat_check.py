@@ -1,8 +1,10 @@
 from pathlib import Path
 
-from pychc.solvers.witness import Status
+from pychc.solvers.witness import Status, ProofFormat
 from pychc.solvers.golem import GolemSolver
-from pychc.solvers.opensmt import OpenSMTSolver
+from pychc.solvers.cvc5 import CVC5Solver
+from pychc.solvers.carcara import Carcara
+
 from pychc.chc_system import CHCSystem
 
 from pysmt.typing import INT, REAL
@@ -59,8 +61,17 @@ print("written to:", tmp.resolve())
 # otherwise, set `binary_path` argument to the GolemSolver constructor
 solver = GolemSolver()
 solver.load_system(sys)
-status = solver.solve(get_witness=True)
+
+proof_checker = Carcara()
+smt_validator = CVC5Solver(logic=QF_UFLIA, proof_checker=proof_checker)
+
+solver.set_smt_validator(smt_validator)
+solver.set_proof_checker(proof_checker)
+
+status = solver.solve()
 print(f"Solving status: {status}")
+
+solver.validate_witness()
 
 witness = solver.get_witness()
 
@@ -69,15 +80,3 @@ assert status == Status.SAT and witness is not None
 print("SAT witness definitions:")
 for var, expr in witness.definitions.items():
     print(f"{var} := {expr.function_body}")
-
-# Validate the witness with an external SMT solver
-queries = sys.get_validate_model_queries(witness)
-
-smt_solver = OpenSMTSolver(logic=QF_UFLIA)
-for query in queries:
-    print(f"Validating query: {query}")
-    if not smt_solver.is_valid(query):
-        print("ERROR! Query validation failed!")
-    else:
-        print("Query validated successfully.")
-        print(smt_solver.get_proof())
