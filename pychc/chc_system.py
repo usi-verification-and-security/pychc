@@ -173,6 +173,41 @@ class CHCSystem:
 
         return set(map(_substitute_clause, self.get_clauses()))
 
+    def learn_from_witness(self, witness: Witness) -> set[FNode]:
+        """
+        Learn new clauses from the given witness.
+
+        :param witness: a Witness containing the interpretations for the predicates
+        """
+        from pychc.shortcuts import Clause, Apply
+        from pysmt.oracles import get_logic
+
+        if not isinstance(witness, SatWitness):
+            logging.warning("Can only learn from SAT witnesses.")
+            return set()
+
+        clauses = set()
+        for pred in self.get_predicates():
+            interpretation = witness.definitions.get(pred.symbol_name(), None)
+            if pred.get_type().is_function_type():
+                head = Apply(pred, interpretation.formal_params)
+                body = interpretation.function_body
+            else:
+                head = pred
+                body = interpretation
+
+            if not get_logic(body) <= self.logic:
+                logging.warning(
+                    f"Learned clause body {body} logic not compatible with system logic."
+                )
+                # TODO: Could try to remove quantifiers here.
+                continue
+            clauses.add(Clause(head=head, body=body))
+
+        for clause in clauses:
+            self.add_clause(clause)
+        return clauses
+
     def _check_sat_witness_consistency(self, witness: SatWitness) -> bool:
         """Check whether the given SAT witness is syntactically consistent."""
         from pysmt.substituter import FunctionInterpretation
