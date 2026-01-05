@@ -30,8 +30,8 @@ class SMTSolverOptions(SmtLibOptions):
 
     PROOF_FORMATS: set[ProofFormat] = set()
 
-    def __init__(self):
-        super().__init__()
+    def __init__(self, **base_options):
+        super().__init__(**base_options)
         self.produce_proofs: bool = False
         self.proof_format: Optional[ProofFormat] = None
 
@@ -91,6 +91,17 @@ class SMTSolver(SmtLibSolver):
                 f"Executable for {self.NAME} not found at: {self._solver_path}"
             )
 
+        if not any(logic <= l for l in self.LOGICS):
+            raise PyCHCSolverException(
+                f"Logic {logic} not supported by solver {self.NAME}"
+            )
+        # Try to upgrade to quantified logic, if supported
+        q_logic = logic.get_quantified_version()
+        if not any(logic <= l for l in self.LOGICS):
+            self.logic = q_logic
+        else:
+            self.logic = logic
+
         # Needed to track relevant commands for proof checking
         self.commands = [[]]
 
@@ -102,6 +113,9 @@ class SMTSolver(SmtLibSolver):
         )
 
         self.set_proof_checker(proof_checker)
+
+    def get_logic(self) -> Logic:
+        return self.logic
 
     def set_proof_checker(self, proof_checker: Optional[ProofChecker]) -> None:
         """
@@ -191,7 +205,7 @@ class SMTSolver(SmtLibSolver):
         # large multi-line outputs without blocking indefinitely.
         buf: list[str] = []
         start = time()
-        idle_timeout = 0.05  # seconds to wait for more data
+        idle_timeout = 0.2  # seconds to wait for more data
         max_total = 10.0  # safety cap to avoid infinite loops
 
         fd = self.solver.stdout  # raw buffered reader from Popen

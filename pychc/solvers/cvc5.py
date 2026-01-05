@@ -3,7 +3,17 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Optional
 
-from pysmt.logics import QF_LRA, LRA, QF_LIA, LIA, Logic
+from pysmt.logics import (
+    Logic,
+    QF_LRA,
+    QF_LIA,
+    QF_LIRA,
+    QF_UFLIA,
+    QF_UFLRA,
+    LIA,
+    LRA,
+    UFLIRA,
+)
 
 from pychc.solvers.witness import ProofFormat
 from pychc.solvers.smt_solver import SMTSolver, SMTSolverOptions
@@ -27,7 +37,7 @@ class CVC5Solver(SMTSolver):
     """CVC5 SMT solver adapter using SMT-LIB textual interface."""
 
     NAME = "cvc5"
-    LOGICS = (QF_LRA, QF_LIA)
+    LOGICS = (QF_LRA, QF_LIA, QF_LIRA, QF_UFLIA, QF_UFLRA, LIA, LRA, UFLIRA)
     OptionsClass = CVC5Options
 
     def __init__(

@@ -244,14 +244,28 @@ class CHCSolver(ABC):
         queries = self.system.get_validate_model_queries(self._witness)
         for query in queries:
 
-            if get_logic(query).is_quantified():
-                from pysmt.shortcuts import QuantifierEliminator
+            query_logic = get_logic(query)
+            known_logic = query_logic <= self.smt_validator.get_logic()
+            if not known_logic and query_logic.is_quantified():
+                # attempt to eliminate quantifiers
+                try:
+                    from pysmt.shortcuts import QuantifierEliminator
 
-                logging.warning(
-                    "Performing quantifier elimination for witness validation."
+                    logging.warning(
+                        "Performing quantifier elimination for witness validation."
+                    )
+                    qe = QuantifierEliminator(name="z3")
+                    query = qe.eliminate_quantifiers(query)
+                    query_logic = get_logic(query)
+                    known_logic = query_logic <= self.smt_validator.get_logic()
+                except Exception as e:
+                    logging.warning(
+                        "Quantifier elimination failed, cannot validate witness."
+                    )
+            if not known_logic:
+                raise PyCHCInvalidResultException(
+                    f"SMT solver {self.smt_validator.NAME} does not support logic {query_logic} required for witness validation."
                 )
-                qe = QuantifierEliminator(name="z3")
-                query = qe.eliminate_quantifiers(query)
 
             if not self.smt_validator.is_valid(query):
                 raise PyCHCInvalidResultException(

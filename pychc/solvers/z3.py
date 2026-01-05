@@ -4,7 +4,17 @@ import functools
 from pathlib import Path
 from typing import Optional
 
-from pysmt.logics import QF_LRA, QF_LIA, Logic
+from pysmt.logics import (
+    Logic,
+    QF_LRA,
+    QF_LIA,
+    QF_LIRA,
+    QF_UFLIA,
+    QF_UFLRA,
+    LIA,
+    LRA,
+    UFLIRA,
+)
 from pysmt.substituter import FunctionInterpretation
 from pysmt.smtlib.parser.parser import SmtLibParser
 from pysmt.fnode import FNode
@@ -123,7 +133,7 @@ class Z3SMTSolver(SMTSolver):
     """Z3 SMT solver adapter using SMT-LIB textual interface."""
 
     NAME = "z3"
-    LOGICS = (QF_LRA, QF_LIA)
+    LOGICS = (QF_LRA, QF_LIA, QF_LIRA, QF_UFLIA, QF_UFLRA, LIA, LRA, UFLIRA)
     OptionsClass = Z3SMTOptions
 
     def __init__(
