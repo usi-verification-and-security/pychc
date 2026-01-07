@@ -199,29 +199,42 @@ class SMTSolver(SmtLibSolver):
     # TODO: allow for retrieving files of failed proofs
 
     def _read_proof_output(self) -> str:
-        # Read all currently available output
-        # Uses `select.select` to poll for readability and accumulates chunks until
-        # the stream is idle for a short timeout. This handles empty lines and
-        # large multi-line outputs without blocking indefinitely.
+        # Read all currently available output:
+        # Block until the first data chunk arrives (or max timeout elapses)
+        # After first data, switch to idle-timeout mode to detect completion
+        # Enforce a hard max timeout of 10s for the entire read
         buf: list[str] = []
         start = time()
-        idle_timeout = 0.2  # seconds to wait for more data
-        max_total = 10.0  # safety cap to avoid infinite loops
+        idle_timeout = 0.1  # seconds to wait for more data after first chunk
+        max_timeout = 10.0  # hard cap for overall read
 
         fd = self.solver.stdout  # raw buffered reader from Popen
+        got_first_chunk = False
+
         while True:
-            rlist, _, _ = select([fd], [], [], idle_timeout)
+            remaining = max_timeout - (time() - start)
+            if remaining <= 0:
+                break
+
+            # Before first chunk: wait up to remaining time (blocking)
+            # After first chunk: wait only idle_timeout (bounded by remaining)
+            wait = remaining if not got_first_chunk else min(idle_timeout, remaining)
+            rlist, _, _ = select([fd], [], [], wait)
             if rlist:
-                # Read a reasonable chunk to drain buffer
                 chunk = fd.read1(8192)
                 if not chunk:
+                    # EOF
                     break
                 buf.append(chunk.decode("utf-8", errors="replace"))
+                got_first_chunk = True
+                continue
             else:
-                # No data ready -> assume solver is waiting for next input
-                break
-            if time() - start > max_total:
-                break
+                # No data arrived within the wait window
+                if got_first_chunk:
+                    # Consider stream idle -> done
+                    break
+                # Otherwise, keep waiting until max_timeout expires
+                continue
 
         proof = "".join(buf).strip()
         self._debug("Read proof bytes: %d", len(proof))
