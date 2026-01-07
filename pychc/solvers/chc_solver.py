@@ -80,12 +80,6 @@ class CHCSolver(ABC):
         smt_validator: Optional[SMTSolver] = None,
         proof_checker: Optional[ProofChecker] = None,
     ):
-        """
-        Initialize the solver with a CHC system.
-
-        :param chc_system: CHC system to solve
-        """
-
         self.system: Optional[CHCSystem] = None
 
         self._status: Optional[Status] = None
@@ -141,6 +135,12 @@ class CHCSolver(ABC):
             self._raw_output = None
         self.system = chc_system
 
+    def get_input_file(self) -> Path:
+        # This method is possibly overridden by subclasses
+        # to add a (get-model) command.
+        input_file = self.system.get_smt2file()
+        return input_file
+
     def solve(self, timeout: Optional[int] = None) -> Status:
         """
         Run the solver on the provided CHC system.
@@ -156,7 +156,8 @@ class CHCSolver(ABC):
         self.options.set_print_witness(expected_validation, self.proof_format)
         args_extra = self.options.to_array()
 
-        input_file = self.system.get_smt2file()
+        # serialize the input system
+        input_file = self.get_input_file()
 
         args = [str(self._solver_path), str(input_file)] + args_extra
         try:
@@ -174,10 +175,11 @@ class CHCSolver(ABC):
             self._status = Status.UNKNOWN
             return self._status
 
-        self._raw_output = (proc.stdout or "").strip()
+        raw_output = (proc.stdout or "").strip()
 
         # Understand if SAT/UNSAT/UNKNOWN
-        self._decide_result()
+        # this sets self._status and self._raw_output
+        self._decide_result(raw_output)
 
         return self._status
 
@@ -192,9 +194,13 @@ class CHCSolver(ABC):
         if not self._raw_output or self._status == Status.UNKNOWN:
             self._witness = None
         elif self._status == Status.SAT:
-            self._witness = self._extract_model()
+            self._witness = SatWitness.load_from_text(self._raw_output)
+            if not self.system.check_witness_consistency(self._witness):
+                raise PyCHCInvalidResultException(
+                    "Extracted model is not consistent with the CHC system predicates."
+                )
         else:
-            self._witness = self._extract_unsat_proof()
+            self._witness = UnsatWitness(self._raw_output, self.proof_format)
 
         return self._witness
 
@@ -221,9 +227,13 @@ class CHCSolver(ABC):
         with open(self.proof_file, "w") as pf:
             pf.write(self._witness.text)
 
-        self.proof_checker.validate(
+        ok = self.proof_checker.validate(
             proof_file=self.proof_file, smt2file=self.system.get_smt2file()
         )
+        if not ok:
+            raise PyCHCInvalidResultException(
+                f"Proof checker {self.proof_checker.NAME} failed to validate the proof."
+            )
 
         # if everything went fine, delete temp file
         self.proof_file.unlink()
@@ -286,20 +296,20 @@ class CHCSolver(ABC):
         """
         return self._status
 
-    @abstractmethod
-    def _decide_result(self):
+    def _decide_result(self, text: str) -> None:
         """
         Decide the solving result (SAT/UNSAT/UNKNOWN) from the solver output.
+        Sets self._status: Status and self._raw_output: str.
         """
-
-    @abstractmethod
-    def _extract_model(self) -> SatWitness:
-        """
-        Extract a SAT witness/model from the solver output.
-        """
-
-    @abstractmethod
-    def _extract_unsat_proof(self) -> UnsatWitness:
-        """
-        Extract an UNSAT proof from the solver output.
-        """
+        # status is first line, the rest is self._raw_output
+        status, *rest = text.splitlines()
+        if status == "sat":
+            self._status = Status.SAT
+            # also remove open-close brackets
+            assert not rest or (rest[0].strip() == "(" and rest[-1].strip() == ")")
+            self._raw_output = "\n".join(rest[1:-1]).strip() if rest else ""
+        elif status == "unsat":
+            self._status = Status.UNSAT
+            self._raw_output = "\n".join(rest).strip()
+        else:
+            self._status = Status.UNKNOWN

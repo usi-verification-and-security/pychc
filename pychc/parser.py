@@ -1,16 +1,12 @@
-import functools
-
 from pysmt.smtlib.parser import SmtLibParser, SmtLibCommand, warn
 from pysmt.exceptions import UndefinedLogicError
 from pysmt.logics import get_logic_by_name
-from pysmt.fnode import FNode
 
 
 class CHCSmtLibParser(SmtLibParser):
     """Custom SMT-LIB parser with LIA symbols."""
 
-    def __init__(self, *args, predicates: set[FNode] = set(), **kwargs):
-        self.predicates = predicates
+    def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
 
         # add support for `div` and `mod` operators
@@ -31,16 +27,3 @@ class CHCSmtLibParser(SmtLibParser):
         except UndefinedLogicError:
             warn("Unknown logic '" + name + "'. Ignoring set-logic command.")
             return SmtLibCommand(current, [None])
-
-    def _reset(self):
-        super()._reset()
-        for pred in self.predicates:
-            self._declare_predicate(pred)
-
-    def _declare_predicate(self, pred: FNode):
-        if pred.get_type().is_function_type():
-            self.cache.bind(
-                pred.symbol_name(), functools.partial(self._function_call_helper, pred)
-            )
-        else:
-            self.cache.bind(pred.symbol_name(), pred)

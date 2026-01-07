@@ -93,12 +93,12 @@ class ProofChecker(ABC):
         except CalledProcessError as err:
             self._raw_output = (err.stdout or "") + (err.stderr or "")
             logging.error(f"{self.NAME} execution failed: {self._raw_output}")
-            raise PyCHCSolverException(f"{self.NAME} execution failed")
+            return False
         except TimeoutExpired:
             logging.error(f"{self.NAME} execution timed out after {timeout} seconds")
             raise PyCHCSolverException(f"{self.NAME} execution timed out")
-        self._raw_output = (proc.stdout or "").strip()
 
+        self._raw_output = (proc.stdout or "").strip()
         return self._decide_result()
 
     @abstractmethod
