@@ -73,12 +73,18 @@ def run_solver(test_func):
         chc_solver.set_smt_validator(smt_validator)
 
         chc_solver.load_system(sys)
-        status = chc_solver.solve()
+        status = chc_solver.solve(validate=True)
         assert status == Status.SAT
 
         chc_solver.validate_witness()
         witness = chc_solver.get_witness()
         assert witness is not None
+
+        sys.learn_from_witness(witness)
+
+        chc_solver.load_system(sys)
+        status = chc_solver.solve(validate=True)
+        assert status == Status.SAT
 
     return _wrapper
 

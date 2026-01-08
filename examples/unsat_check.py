@@ -1,8 +1,7 @@
 from pathlib import Path
 
-from pychc.solvers.witness import Status, ProofFormat
+from pychc.solvers.witness import UnsatWitness, ProofFormat, Status
 from pychc.solvers.golem import GolemSolver
-from pychc.solvers.cvc5 import CVC5Solver
 from pychc.solvers.carcara import Carcara
 from pychc.chc_system import CHCSystem
 
@@ -58,15 +57,20 @@ solver = GolemSolver()
 solver.load_system(sys)
 
 proof_checker = Carcara()
-smt_validator = CVC5Solver(logic=QF_UFLIA, proof_checker=proof_checker)
-
-solver.set_smt_validator(smt_validator)
 solver.set_proof_checker(proof_checker)
 
-status = solver.solve()
+status = solver.solve(validate=True)
 print(f"Solving status: {status}")
 assert status == Status.UNSAT
 
-solver.validate_witness()
+witness = solver.get_witness()
+
+unsat_witness = Path("unsat_witness.alethe")
+print(f"Serializing UNSAT witness to {unsat_witness}")
+witness.serialize(unsat_witness)
+
+print("Validating re-read UNSAT witness")
+witness2 = UnsatWitness.load_from_file(unsat_witness, ProofFormat.ALETHE)
+sys.validate_unsat_proof(witness2, proof_checker=Carcara())
 
 print("UNSAT witness validated successfully.")

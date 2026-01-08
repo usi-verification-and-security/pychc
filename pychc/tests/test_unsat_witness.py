@@ -61,7 +61,7 @@ def run_solver(test_func):
                 chc_solver.solve()
             return
 
-        status = chc_solver.solve()
+        status = chc_solver.solve(validate=False)
         assert status == Status.UNSAT, "Expected UNSAT result from the solver"
         model = chc_solver.get_witness()
         assert model, "Expected a witness/model from the solver"
