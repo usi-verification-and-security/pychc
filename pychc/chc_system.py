@@ -13,8 +13,10 @@ from pysmt.fnode import FNode
 from pysmt.smtlib.printers import SmtPrinter
 from pysmt.typing import BOOL
 
-from pychc.exceptions import PyCHCInvalidSystemException
-from pychc.solvers.witness import SatWitness, UnsatWitness, Witness
+from pychc.exceptions import PyCHCInvalidResultException, PyCHCInvalidSystemException
+from pychc.solvers import proof_checker, witness
+from pychc.solvers.smt_solver import SMTSolver
+from pychc.solvers.witness import SatWitness, UnsatWitness, Witness, Status
 
 
 class CHCSystem:
@@ -23,6 +25,9 @@ class CHCSystem:
         self.predicates: set[FNode] = set()
         self.clauses: set[FNode] = set()
         self.smt2file: Optional[Path] = None
+
+        self.status = None
+        self.witness = None
 
     @classmethod
     def load_from_smtlib(cls, path: Path) -> CHCSystem:
@@ -54,10 +59,12 @@ class CHCSystem:
 
         return sys
 
-    def invalidate_smt2file(self) -> None:
+    def invalidate_data(self) -> None:
         if self.smt2file is not None:
             self.smt2file.unlink()
         self.smt2file = None
+        self.status = None
+        self.witness = None
 
     def get_logic(self) -> Optional[Logic]:
         return self.logic
@@ -68,7 +75,7 @@ class CHCSystem:
 
         :param pred: a pysmt Symbol of type FunctionType
         """
-        self.invalidate_smt2file()
+        self.invalidate_data()
         try:
             type_ = pred.get_type()
         except Exception as e:
@@ -96,7 +103,7 @@ class CHCSystem:
         """
         from pysmt.oracles import get_logic
 
-        self.invalidate_smt2file()
+        self.invalidate_data()
 
         is_function = lambda x: x.get_type().is_function_type()
 
@@ -138,76 +145,7 @@ class CHCSystem:
     def get_clauses(self) -> set[FNode]:
         return self.clauses
 
-    def get_validate_model_queries(self, model: SatWitness) -> set[FNode]:
-        """
-        Given a SAT witness/model, produce the set of queries to validate it.
-
-        :param model: a SatWitness containing the interpretations for the predicates
-        :return: a set of FNodes representing the queries to validate the model.
-
-        Each query corresponds to a clause in the system, with predicates
-        replaced by their definitions in the model.
-        The model is validated if all queries are valid formulae.
-        """
-        assert self.check_witness_consistency(
-            model
-        ), "Given model is not consistent with the CHC system predicates."
-
-        interpretations = {
-            p: model.definitions[p.symbol_name()]
-            for p in self.get_predicates()
-            if p.get_type().is_function_type()
-        }
-        substitutions = {
-            p: model.definitions[p.symbol_name()]
-            for p in self.get_predicates()
-            if not p.get_type().is_function_type()
-        }
-
-        def _substitute_clause(clause: FNode) -> FNode:
-            if clause.is_forall():
-                clause = clause.arg(0)
-            return clause.substitute(
-                subs=substitutions, interpretations=interpretations
-            )
-
-        return set(map(_substitute_clause, self.get_clauses()))
-
-    def learn_from_witness(self, witness: Witness) -> set[FNode]:
-        """
-        Learn new clauses from the given witness.
-
-        :param witness: a Witness containing the interpretations for the predicates
-        """
-        from pychc.shortcuts import Clause, Apply
-        from pysmt.oracles import get_logic
-
-        if not isinstance(witness, SatWitness):
-            logging.warning("Can only learn from SAT witnesses.")
-            return set()
-
-        clauses = set()
-        for pred in self.get_predicates():
-            interpretation = witness.definitions.get(pred.symbol_name(), None)
-            if pred.get_type().is_function_type():
-                head = Apply(pred, interpretation.formal_params)
-                body = interpretation.function_body
-            else:
-                head = pred
-                body = interpretation
-
-            if not get_logic(body) <= self.logic:
-                logging.warning(
-                    f"Learned clause body {body} logic not compatible with system logic."
-                )
-                # TODO: Could try to remove quantifiers here.
-                continue
-            clauses.add(Clause(head=head, body=body))
-
-        for clause in clauses:
-            self.add_clause(clause)
-        return clauses
-
+    ## Witness syntactic consistency checks
     def _check_sat_witness_consistency(self, witness: SatWitness) -> bool:
         """Check whether the given SAT witness is syntactically consistent."""
         from pysmt.substituter import FunctionInterpretation
@@ -252,6 +190,134 @@ class CHCSystem:
         if isinstance(witness, UnsatWitness):
             return self._check_unsat_witness_consistency(witness)
         return True
+
+    ## Witness semantic validation
+    def _get_validate_model_queries(self, model: SatWitness) -> set[FNode]:
+        """
+        Given a SAT witness/model, produce the set of queries to validate it.
+
+        :param model: a SatWitness containing the interpretations for the predicates
+        :return: a set of FNodes representing the queries to validate the model.
+
+        Each query corresponds to a clause in the system, with predicates
+        replaced by their definitions in the model.
+        The model is validated if all queries are valid formulae.
+        """
+        assert self.check_witness_consistency(
+            model
+        ), "Given model is not consistent with the CHC system predicates."
+
+        interpretations = {
+            p: model.definitions[p.symbol_name()]
+            for p in self.get_predicates()
+            if p.get_type().is_function_type()
+        }
+        substitutions = {
+            p: model.definitions[p.symbol_name()]
+            for p in self.get_predicates()
+            if not p.get_type().is_function_type()
+        }
+
+        def _substitute_clause(clause: FNode) -> FNode:
+            if clause.is_forall():
+                clause = clause.arg(0)
+            return clause.substitute(
+                subs=substitutions, interpretations=interpretations
+            )
+
+        return set(map(_substitute_clause, self.get_clauses()))
+
+    def validate_sat_model(self, witness: SatWitness, smt_validator: SMTSolver):
+        from pysmt.oracles import get_logic
+
+        queries = self._get_validate_model_queries(witness)
+        for query in queries:
+            query_logic = get_logic(query)
+            known_logic = query_logic <= smt_validator.get_logic()
+            if not known_logic and query_logic.is_quantified():
+                # attempt to eliminate quantifiers
+                try:
+                    from pysmt.shortcuts import QuantifierEliminator
+
+                    logging.warning(
+                        "Performing quantifier elimination for witness validation."
+                    )
+                    qe = QuantifierEliminator(name="z3")
+                    query = qe.eliminate_quantifiers(query)
+                except Exception as e:
+                    logging.warning(
+                        "Quantifier elimination failed, cannot validate witness."
+                    )
+
+            if not smt_validator.is_valid(query):
+                raise PyCHCInvalidResultException(
+                    f"Solver {smt_validator.NAME} produced an invalid model for the system."
+                )
+            if smt_validator.proof_checker:
+                if not smt_validator.is_valid_proof():
+                    raise PyCHCInvalidResultException(
+                        f"SMT solver {smt_validator.NAME} produced an invalid proof."
+                    )
+            else:
+                logging.warning(
+                    f"No proof checker set for SMT solver {smt_validator.NAME}, skipping proof validation"
+                )
+                # TODO: make the proof available
+        self.status = Status.SAT
+        self.witness = witness
+
+    def validate_unsat_proof(
+        self, witness: UnsatWitness, proof_checker: proof_checker.ProofChecker
+    ):
+        smt2file = self.get_smt2file()
+        proof_file = Path(tempfile.NamedTemporaryFile("w", suffix=".proof").name)
+        with open(proof_file, "w") as pf:
+            pf.write(witness.text)
+
+        ok = proof_checker.validate(proof_file=proof_file, smt2file=smt2file)
+        if not ok:
+            raise PyCHCInvalidResultException(
+                f"Proof checker {proof_checker.NAME} failed to validate the proof."
+            )
+        # if everything went fine, delete temp file
+        proof_file.unlink()
+        self.status = Status.UNSAT
+        self.witness = witness
+
+    def learn_from_witness(self, witness: Witness) -> set[FNode]:
+        """
+        Learn new clauses from the given witness.
+
+        :param witness: a Witness containing the interpretations for the predicates
+        """
+        from pychc.shortcuts import Clause, Apply
+        from pysmt.oracles import get_logic
+
+        if not isinstance(witness, SatWitness):
+            logging.warning("Can only learn from SAT witnesses.")
+            return set()
+
+        clauses = set()
+        for pred in self.get_predicates():
+            interpretation = witness.definitions.get(pred.symbol_name(), None)
+            if pred.get_type().is_function_type():
+                head = Apply(pred, interpretation.formal_params)
+                body = interpretation.function_body
+            else:
+                head = pred
+                body = interpretation
+
+            if not get_logic(body) <= self.logic:
+                logging.warning(
+                    f"Learned clause body {body} logic not compatible with system logic."
+                )
+                # TODO: Could try to remove quantifiers here.
+                continue
+            clauses.add(Clause(head=head, body=body))
+
+        for clause in clauses:
+            self.add_clause(clause)
+        return clauses
 
     def get_smt2file(self) -> Path:
         if self.smt2file is None or not self.smt2file.exists():

@@ -61,8 +61,35 @@ class SatWitness(Witness):
 
         return SatWitness(predicates)
 
+    @classmethod
+    def load_from_file(cls, path: Path) -> SatWitness:
+        with open(path, "r") as f:
+            smt_text = f.read()
+        return cls.load_from_text(smt_text)
+
     def __init__(self, definitions: dict[str, FunctionInterpretation]):
         self.definitions = definitions
+
+    def serialize(self, path: Path) -> None:
+        """Serialize the SAT witness to a file."""
+        from pysmt.utils import quote
+        from pysmt.typing import BOOL
+        from pysmt.smtlib.printers import SmtPrinter
+
+        booltype = BOOL.as_smtlib(funstyle=False)
+
+        with open(path, "w") as fout:
+            printer = SmtPrinter(fout)
+            for name, interpretation in self.definitions.items():
+                # Similar to SmtCommand.serialize, but taking care of quoting parameter's names
+                name = quote(name)
+                params = " ".join(
+                    f"({quote(v.symbol_name())} {v.symbol_type().as_smtlib(funstyle=False)})"
+                    for v in interpretation.formal_params
+                )
+                fout.write(f"(define-fun {name} ({params}) {booltype} ")
+                printer.printer(interpretation.function_body)
+                fout.write(")")
 
 
 class UnsatWitness(Witness):
@@ -74,6 +101,12 @@ class UnsatWitness(Witness):
     def __init__(self, text: str, proof_format: ProofFormat):
         self.text = text
         self.proof_format = proof_format
+
+    @classmethod
+    def load_from_file(cls, path: Path, proof_format: ProofFormat) -> SatWitness:
+        with open(path, "r") as f:
+            smt_text = f.read()
+        return cls(smt_text, proof_format)
 
     def serialize(self, path: Path) -> None:
         """Serialize the UNSAT witness to a file."""

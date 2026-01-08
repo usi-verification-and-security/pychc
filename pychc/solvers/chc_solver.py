@@ -6,10 +6,7 @@ from shutil import which
 from pathlib import Path
 from abc import ABC, abstractmethod
 from subprocess import run, CalledProcessError, TimeoutExpired
-
 from typing import Optional
-
-from pysmt.oracles import get_logic
 
 from pychc.solvers.proof_checker import ProofChecker
 from pychc.solvers.smt_solver import SMTSolver
@@ -141,7 +138,7 @@ class CHCSolver(ABC):
         input_file = self.system.get_smt2file()
         return input_file
 
-    def solve(self, timeout: Optional[int] = None) -> Status:
+    def solve(self, timeout: Optional[int] = None, validate=False) -> Status:
         """
         Run the solver on the provided CHC system.
 
@@ -181,6 +178,9 @@ class CHCSolver(ABC):
         # this sets self._status and self._raw_output
         self._decide_result(raw_output)
 
+        if self._status != Status.UNKNOWN and validate:
+            self.validate_witness()
+
         return self._status
 
     def get_witness(self) -> Optional[Witness]:
@@ -207,88 +207,21 @@ class CHCSolver(ABC):
     def validate_witness(self):
         if not self._witness:
             self.get_witness()
-
+        assert self._witness
         if self._status == Status.SAT:
-            self._validate_sat_witness()
+            if not self.smt_validator:
+                raise PyCHCException(
+                    "No SMT validator set for requested witness validation."
+                )
+            self.system.validate_sat_model(self._witness, self.smt_validator)
         elif self._status == Status.UNSAT:
-            self._validate_unsat_witness()
+            if not self.proof_checker:
+                raise PyCHCException(
+                    "No proof checker set for requested proof validation."
+                )
+            self.system.validate_unsat_proof(self._witness, self.proof_checker)
         else:
             raise PyCHCException("Cannot validate witness for UNKNOWN status.")
-        return self._witness
-
-    def _validate_unsat_witness(self):
-        assert self._status == Status.UNSAT
-        assert self._witness
-
-        if not self.proof_checker:
-            raise PyCHCException("No proof checker set for requested proof validation.")
-
-        self.proof_file = Path(tempfile.NamedTemporaryFile("w", suffix=".proof").name)
-        with open(self.proof_file, "w") as pf:
-            pf.write(self._witness.text)
-
-        ok = self.proof_checker.validate(
-            proof_file=self.proof_file, smt2file=self.system.get_smt2file()
-        )
-        if not ok:
-            raise PyCHCInvalidResultException(
-                f"Proof checker {self.proof_checker.NAME} failed to validate the proof."
-            )
-
-        # if everything went fine, delete temp file
-        self.proof_file.unlink()
-
-    def _validate_sat_witness(self):
-        assert self._status == Status.SAT
-        assert self._witness
-
-        if not self.smt_validator:
-            raise PyCHCException(
-                "No SMT validator set for requested witness validation."
-            )
-        if not self.smt_validator.proof_checker:
-            logging.warning(
-                f"No proof checker set for SMT solver {self.smt_validator.NAME}, skipping proof validation"
-            )
-
-        queries = self.system.get_validate_model_queries(self._witness)
-        for query in queries:
-
-            query_logic = get_logic(query)
-            known_logic = query_logic <= self.smt_validator.get_logic()
-            if not known_logic and query_logic.is_quantified():
-                # attempt to eliminate quantifiers
-                try:
-                    from pysmt.shortcuts import QuantifierEliminator
-
-                    logging.warning(
-                        "Performing quantifier elimination for witness validation."
-                    )
-                    qe = QuantifierEliminator(name="z3")
-                    query = qe.eliminate_quantifiers(query)
-                    query_logic = get_logic(query)
-                    known_logic = query_logic <= self.smt_validator.get_logic()
-                except Exception as e:
-                    logging.warning(
-                        "Quantifier elimination failed, cannot validate witness."
-                    )
-            if not known_logic:
-                raise PyCHCInvalidResultException(
-                    f"SMT solver {self.smt_validator.NAME} does not support logic {query_logic} required for witness validation."
-                )
-
-            if not self.smt_validator.is_valid(query):
-                raise PyCHCInvalidResultException(
-                    f"Solver {self.NAME} produced an invalid model for the system."
-                )
-            if self.smt_validator.proof_checker:
-                if not self.smt_validator.is_valid_proof():
-                    raise PyCHCInvalidResultException(
-                        f"SMT solver {self.smt_validator.NAME} produced an invalid proof."
-                    )
-            else:
-                # TODO: make the proof available
-                pass
 
     def get_status(self) -> Optional[Status]:
         """
