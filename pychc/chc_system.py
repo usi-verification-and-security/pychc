@@ -7,7 +7,7 @@ from pathlib import Path
 import tempfile
 from typing import Optional
 
-from pysmt.shortcuts import ForAll
+from pysmt.shortcuts import ForAll, And, Not, FALSE
 from pysmt.logics import Logic
 from pysmt.fnode import FNode
 from pysmt.smtlib.printers import SmtPrinter
@@ -301,19 +301,20 @@ class CHCSystem:
         for pred in self.get_predicates():
             interpretation = witness.definitions.get(pred.symbol_name(), None)
             if pred.get_type().is_function_type():
-                head = Apply(pred, interpretation.formal_params)
-                body = interpretation.function_body
+                predicate = Apply(pred, interpretation.formal_params)
+                property = interpretation.function_body
             else:
-                head = pred
-                body = interpretation
+                predicate = pred
+                property = interpretation
 
+            body = And(predicate, Not(property))
             if not get_logic(body) <= self.logic:
                 logging.warning(
                     f"Learned clause body {body} logic not compatible with system logic."
                 )
                 # TODO: Could try to remove quantifiers here.
                 continue
-            clauses.add(Clause(head=head, body=body))
+            clauses.add(Clause(body=body, head=FALSE()))
 
         for clause in clauses:
             self.add_clause(clause)
