@@ -119,7 +119,7 @@ def test_system2(chc_class, smt_class, smt_kwargs):
     x = Symbol("x", INT)
     sys.add_predicate(inv1)
     sys.add_predicate(inv2)
-    sys.add_clause(Clause(Apply(inv1, [Int(0)])))
+    sys.add_clause(Clause(head=Apply(inv1, [Int(0)])))
     sys.add_clause(Clause(body=Apply(inv1, [x]), head=Apply(inv1, [Plus(x, Int(1))])))
     sys.add_clause(Clause(body=Apply(inv1, [x]), head=Apply(inv2, [Minus(Int(0), x)])))
     sys.add_clause(Clause(body=And(Apply(inv2, [x]), LT(Int(0), x)), head=FALSE()))

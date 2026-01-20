@@ -50,7 +50,7 @@ def chc_sys_lra():
 def test_system_creation(chc_sys_lia):
     assert chc_sys_lia.get_logic() == QF_UFLIA
     assert chc_sys_lia.get_predicates() == set()
-    assert chc_sys_lia.get_clauses() == set()
+    assert chc_sys_lia.get_clauses() == []
     return chc_sys_lia
 
 
