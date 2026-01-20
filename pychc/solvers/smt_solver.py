@@ -144,6 +144,7 @@ class SMTSolver(SmtLibSolver):
 
     def _send_command(self, cmd):
         """Sends a command to the STDIN pipe."""
+        self.delete_files()
         self._debug("Sending: %s", cmd.serialize_to_string())
         string_io = StringIO()
         cmd.serialize(string_io, daggify=True)
@@ -155,6 +156,7 @@ class SMTSolver(SmtLibSolver):
 
     def reset_assertions(self):
         super().reset_assertions()
+        self.delete_files()
         self.commands = []
 
     def push(self):
@@ -163,6 +165,7 @@ class SMTSolver(SmtLibSolver):
 
     def pop(self):
         super().pop()
+        self.delete_files()
         self.commands.pop(-1)
 
     def get_proof(self) -> str:
@@ -172,31 +175,38 @@ class SMTSolver(SmtLibSolver):
         self._send_command_get_proof()
         return self._read_proof_output()
 
+    def delete_files(self) -> None:
+        try:
+            self.smt2file.unlink()
+            self.proof_file.unlink()
+        except Exception:
+            pass
+
+    def get_smt2_file(self) -> Path:
+        # serialize active smt2 commands
+        self.smt2file = Path(tempfile.NamedTemporaryFile(suffix=".smt2").name)
+        with open(self.smt2file, "w") as pf:
+            pf.write("\n".join(c for stack in self.commands for c in stack))
+        return self.smt2file
+
+    def get_proof_file(self) -> Path:
+        proof = self.get_proof()
+        self.proof_file = Path(tempfile.NamedTemporaryFile(suffix=".proof").name)
+        # serialize proof
+        with open(self.proof_file, "w") as prf:
+            prf.write(proof)
+        return self.proof_file
+
     def is_valid_proof(self) -> bool:
         """
         Request a proof from the solver and validate it using the configured proof checker
         """
-        proof = self.get_proof()
-        self.smt2file = Path(tempfile.NamedTemporaryFile(suffix=".smt2").name)
-        self.proof_file = Path(tempfile.NamedTemporaryFile(suffix=".proof").name)
-
-        # serialize active smt2 commands
-        with open(self.smt2file, "w") as pf:
-            pf.write("\n".join(c for stack in self.commands for c in stack))
-        # serialize proof
-        with open(self.proof_file, "w") as prf:
-            prf.write(proof)
-
+        self.get_proof_file()
+        self.get_smt2_file()
         ok = self.proof_checker.validate(self.proof_file, self.smt2file)
-
         if ok:
-            # if everything went fine, delete temp files
-            self.smt2file.unlink()
-            self.proof_file.unlink()
-
+            self.delete_files()
         return ok
-
-    # TODO: allow for retrieving files of failed proofs
 
     def _read_proof_output(self) -> str:
         # Read all currently available output:

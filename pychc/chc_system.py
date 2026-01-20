@@ -23,7 +23,7 @@ class CHCSystem:
     def __init__(self, logic: Logic):
         self.logic: Logic = logic
         self.predicates: set[FNode] = set()
-        self.clauses: set[FNode] = set()
+        self.clauses: list[FNode] = []
         self.smt2file: Optional[Path] = None
 
         self.status = None
@@ -94,7 +94,11 @@ class CHCSystem:
     def get_predicates(self) -> set[FNode]:
         return self.predicates
 
-    def add_clause(self, clause: FNode) -> None:
+    def add_clauses(self, clauses: set[FNode]) -> None:
+        for clause in clauses:
+            self.add_clause(clause)
+
+    def add_clause(self, clause: FNode) -> int:
         """
         Add a CHC clause.
 
@@ -140,9 +144,15 @@ class CHCSystem:
             raise PyCHCInvalidSystemException(
                 f"Clause {clause} has multiple predicates in head."
             )
-        self.clauses.add(clause)
+        idx = len(self.clauses)
+        self.clauses.append(clause)
+        return idx
 
-    def get_clauses(self) -> set[FNode]:
+    def remove_clause(self, clause_idx: int) -> None:
+        self.invalidate_data()
+        del self.clauses[clause_idx]
+
+    def get_clauses(self) -> list[FNode]:
         return self.clauses
 
     ## Witness syntactic consistency checks
@@ -251,12 +261,12 @@ class CHCSystem:
 
             if not smt_validator.is_valid(query):
                 raise PyCHCInvalidResultException(
-                    f"Solver {smt_validator.NAME} produced an invalid model for the system."
+                    f"Solver {smt_validator.NAME} produced an invalid model for the system. See satisfiable query: {smt_validator.get_smt2_file()}"
                 )
             if smt_validator.proof_checker:
                 if not smt_validator.is_valid_proof():
                     raise PyCHCInvalidResultException(
-                        f"SMT solver {smt_validator.NAME} produced an invalid proof."
+                        f"SMT solver {smt_validator.NAME} produced an invalid proof. See proof file: {smt_validator.get_proof_file()} for query {smt_validator.get_smt2_file()}"
                     )
             else:
                 logging.warning(
@@ -277,7 +287,7 @@ class CHCSystem:
         ok = proof_checker.validate(proof_file=proof_file, smt2file=smt2file)
         if not ok:
             raise PyCHCInvalidResultException(
-                f"Proof checker {proof_checker.NAME} failed to validate the proof."
+                f"Proof checker {proof_checker.NAME} failed to validate the proof {proof_file} on {smt2file}."
             )
         # if everything went fine, delete temp file
         proof_file.unlink()

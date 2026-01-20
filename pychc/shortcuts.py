@@ -38,7 +38,7 @@ def Apply(pred: FNode, args: list[FNode]) -> FNode:
         ) from e
 
 
-def Clause(head: FNode, body: Optional[FNode] = None) -> FNode:
+def Clause(body: Optional[FNode] = None, head: FNode = None) -> FNode:
     """
     Create a CHC clause from a head and an optional body.
 

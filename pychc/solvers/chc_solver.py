@@ -149,7 +149,8 @@ class CHCSolver(ABC):
         if not self.system:
             raise PyCHCSolverException("No CHC system loaded in solver")
 
-        expected_validation = self.smt_validator or self.proof_format
+        # Always ask for a witness.
+        expected_validation = True  # self.smt_validator or self.proof_format
         self.options.set_print_witness(expected_validation, self.proof_format)
         args_extra = self.options.to_array()
 
