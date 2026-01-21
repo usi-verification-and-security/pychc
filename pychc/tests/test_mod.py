@@ -57,7 +57,7 @@ def run_solver(test_func):
         assert sys1.get_predicates() == sys.get_predicates()
         assert sys1.get_clauses() == sys.get_clauses()
 
-        chc_solver = Z3CHCSolver()
+        chc_solver = Z3CHCSolver(global_guidance=True)
         chc_solver.load_system(sys)
         validator = Z3SMTSolver(logic=LIA)
         chc_solver.set_smt_validator(validator)
