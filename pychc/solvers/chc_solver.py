@@ -83,7 +83,7 @@ class CHCSolver(ABC):
         self._raw_output: Optional[str] = None
         self._witness: Optional[Witness] = None
 
-        self.options: CHCSolverOptions = self.OPTION_CLASS()
+        self.chc_options: CHCSolverOptions = self.OPTION_CLASS()
 
         if not self.NAME:
             raise PyCHCInternalException("CHCSolver.NAME must be defined by subclass")
@@ -109,17 +109,26 @@ class CHCSolver(ABC):
         """
         Set the proof format to use for UNSAT proofs.
         """
+        if proof_format:
+            self.chc_options.set_print_witness(True, proof_format)
+        else:
+            self.chc_options.set_print_witness(False)
+        self.proof_format = proof_format
         if self.proof_checker and self.proof_checker.get_proof_format() != proof_format:
             self.proof_checker = None
             logging.warning("Changing proof format, unsetting existing proof checker.")
-        self.proof_format = proof_format
 
     def set_proof_checker(self, proof_checker: Optional[ProofChecker]) -> None:
         """
         Set the proof checker to use for validating UNSAT proofs.
         """
+        proof_format = proof_checker.get_proof_format() if proof_checker else None
+        if proof_format:
+            self.chc_options.set_print_witness(True, proof_format)
+        else:
+            self.chc_options.set_print_witness(False)
         self.proof_checker = proof_checker
-        self.proof_format = proof_checker.get_proof_format() if proof_checker else None
+        self.proof_format = proof_format
 
     def load_system(self, chc_system: CHCSystem) -> None:
         """
@@ -151,8 +160,8 @@ class CHCSolver(ABC):
 
         # Always ask for a witness.
         expected_validation = True  # self.smt_validator or self.proof_format
-        self.options.set_print_witness(expected_validation, self.proof_format)
-        args_extra = self.options.to_array()
+        self.chc_options.set_print_witness(expected_validation, self.proof_format)
+        args_extra = self.chc_options.to_array()
 
         # serialize the input system
         input_file = self.get_input_file()
