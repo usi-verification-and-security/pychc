@@ -129,7 +129,7 @@ class Z3CHCSolver(CHCSolver, SMTSolver):
 
         self._send_command(SmtLibCommand(smtcmd.GET_MODEL, []))
 
-    def solve(self, validate: bool = False, timeout: Optional[int] = None) -> Status:
+    def solve(self, timeout: Optional[int] = None, validate: bool = False) -> Status:
         if not self.system:
             raise PyCHCSolverException("No CHC system loaded in solver")
 
