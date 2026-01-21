@@ -157,7 +157,7 @@ class SMTSolver(SmtLibSolver):
     def reset_assertions(self):
         super().reset_assertions()
         self.delete_files()
-        self.commands = []
+        self.commands = [[]]
 
     def push(self):
         super().push()
@@ -173,7 +173,7 @@ class SMTSolver(SmtLibSolver):
         Request a proof/certificate from the solver using `(get-proof)`.
         """
         self._send_command_get_proof()
-        return self._read_proof_output()
+        return self._get_long_answer()
 
     def delete_files(self) -> None:
         try:
@@ -208,7 +208,7 @@ class SMTSolver(SmtLibSolver):
             self.delete_files()
         return ok
 
-    def _read_proof_output(self) -> str:
+    def _get_long_answer(self) -> str:
         # Read all currently available output:
         # Block until the first data chunk arrives (or max timeout elapses)
         # After first data, switch to idle-timeout mode to detect completion
