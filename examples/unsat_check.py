@@ -11,8 +11,10 @@ from pysmt.shortcuts import (
     And,
     Symbol,
     Equals,
-    Int, Real,
-    Plus, Minus,
+    Int,
+    Real,
+    Plus,
+    Minus,
     FALSE,
     LT,
 )
@@ -33,14 +35,12 @@ sys.add_clause(Clause(Apply(inv, [Int(0)])))
 x = Symbol("x", INT)
 nx = Symbol("nx", INT)
 
-sys.add_clause(Clause(
-    body=And(Apply(inv, [x]), Equals(nx, Plus(x, Int(1)))),
-    head=Apply(inv, [nx])
-))
-sys.add_clause(Clause(
-    body=And(Apply(inv, [x]), LT(x, Int(3))),
-    head=FALSE()
-))
+sys.add_clause(
+    Clause(
+        body=And(Apply(inv, [x]), Equals(nx, Plus(x, Int(1)))), head=Apply(inv, [nx])
+    )
+)
+sys.add_clause(Clause(body=And(Apply(inv, [x]), LT(x, Int(3))), head=FALSE()))
 
 # Serialize the CHC system to an SMT-LIBv2 file
 tmp = Path("chc_example.smt2")

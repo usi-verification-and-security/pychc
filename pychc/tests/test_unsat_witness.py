@@ -22,6 +22,8 @@ from pychc.solvers.witness import ProofFormat, Status
 from pychc.tests.common import reset_pysmt_env
 
 from pychc.solvers.golem import GolemSolver
+from pychc.solvers.eldarica import EldaricaSolver
+from pychc.solvers.z3 import Z3CHCSolver
 from pychc.solvers.carcara import Carcara
 
 ALL_OPTIONS = [
@@ -29,6 +31,12 @@ ALL_OPTIONS = [
     (GolemSolver, ProofFormat.LEGACY, True),
     (GolemSolver, ProofFormat.INTERMEDIATE, True),
     (GolemSolver, ProofFormat.DOT, False),
+    (EldaricaSolver, None, True),
+    (EldaricaSolver, ProofFormat.ALETHE, False),
+    (EldaricaSolver, ProofFormat.LEGACY, False),
+    (Z3CHCSolver, None, True),
+    (Z3CHCSolver, ProofFormat.ALETHE, False),
+    (Z3CHCSolver, ProofFormat.LEGACY, False),
 ]
 
 
@@ -50,22 +58,27 @@ def run_solver(test_func):
         chc_solver = chc_cls()
         chc_solver.load_system(sys)
 
+        sys.serialize(Path("tmp.smt2"))
+
         if proof == ProofFormat.ALETHE:
             proof_checker = Carcara()
-            chc_solver.set_proof_checker(proof_checker)
-        else:
-            chc_solver.set_unsat_proof_format(proof)
-
-        if not expected_ok:
-            with pytest.raises(PyCHCSolverException):
-                chc_solver.solve()
-            return
+            if not expected_ok:
+                with pytest.raises(PyCHCSolverException):
+                    chc_solver.set_proof_checker(proof_checker)
+            else:
+                chc_solver.set_proof_checker(proof_checker)
+        elif proof is not None:
+            if not expected_ok:
+                with pytest.raises(PyCHCSolverException):
+                    chc_solver.set_unsat_proof_format(proof)
+            else:
+                chc_solver.set_unsat_proof_format(proof)
 
         status = chc_solver.solve(validate=False)
         assert status == Status.UNSAT, "Expected UNSAT result from the solver"
         model = chc_solver.get_witness()
         assert model, "Expected a witness/model from the solver"
-        if proof == ProofFormat.ALETHE:
+        if expected_ok and proof == ProofFormat.ALETHE:
             chc_solver.validate_witness()
 
     return _wrapper

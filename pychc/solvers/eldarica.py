@@ -17,7 +17,7 @@ class EldaricaOptions(CHCSolverOptions):
     def set_print_witness(
         self, value: bool = True, proof_format: Optional[ProofFormat] = None
     ):
-        if proof_format:
+        if value and proof_format:
             raise PyCHCSolverException(
                 "Eldarica does not support custom proof formats."
             )

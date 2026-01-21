@@ -15,8 +15,10 @@ from pysmt.shortcuts import (
     And,
     Symbol,
     Equals,
-    Int, Real,
-    Plus, Minus,
+    Int,
+    Real,
+    Plus,
+    Minus,
     FALSE,
     LT,
 )
@@ -32,19 +34,17 @@ sys = CHCSystem(logic=QF_UFLIA)
 inv = Predicate("inv", [INT])
 sys.add_predicate(inv)
 
-sys.add_clause(Clause(Apply(inv, [Int(0)])))
+sys.add_clause(Clause(head=Apply(inv, [Int(0)])))
 
 x = Symbol("x", INT)
 nx = Symbol("nx", INT)
 
-sys.add_clause(Clause(
-    body=And(Apply(inv, [x]), Equals(nx, Plus(x, Int(1)))),
-    head=Apply(inv, [nx])
-))
-sys.add_clause(Clause(
-    body=And(Apply(inv, [x]), LT(x, Int(0))),
-    head=FALSE()
-))
+sys.add_clause(
+    Clause(
+        body=And(Apply(inv, [x]), Equals(nx, Plus(x, Int(1)))), head=Apply(inv, [nx])
+    )
+)
+sys.add_clause(Clause(body=And(Apply(inv, [x]), LT(x, Int(0))), head=FALSE()))
 
 # Serialize the CHC system to an SMT-LIBv2 file
 tmp = Path("chc_example.smt2")
