@@ -16,7 +16,7 @@ from pysmt.logics import Logic
 
 from pychc.solvers.witness import ProofFormat
 from pychc.solvers.proof_checker import ProofChecker
-from pychc.exceptions import PyCHCSolverException, PyCHCInternalException
+from pychc.exceptions import PyCHCInvalidResultException, PyCHCSolverException, PyCHCInternalException
 
 
 class SMTSolverOptions(SmtLibOptions):
@@ -197,16 +197,17 @@ class SMTSolver(SmtLibSolver):
             prf.write(proof)
         return self.proof_file
 
-    def is_valid_proof(self) -> bool:
+    def validate_proof(self):
         """
         Request a proof from the solver and validate it using the configured proof checker
         """
         self.get_proof_file()
         self.get_smt2_file()
         ok = self.proof_checker.validate(self.proof_file, self.smt2file)
-        if ok:
-            self.delete_files()
-        return ok
+        if not ok:
+            raise PyCHCInvalidResultException(
+                f"SMT solver {SMTSolver.NAME} produced an invalid proof. See proof file: {self.get_proof_file()} for query {self.get_smt2_file()}")
+        self.delete_files()
 
     def _get_long_answer(self) -> str:
         # Read all currently available output:

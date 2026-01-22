@@ -204,7 +204,12 @@ class CHCSolver(ABC):
         if not self._raw_output or self._status == Status.UNKNOWN:
             self._witness = None
         elif self._status == Status.SAT:
-            self._witness = SatWitness.load_from_text(self._raw_output)
+            try:
+                self._witness = SatWitness.load_from_text(self._raw_output)
+            except Exception as e:
+                raise PyCHCSolverException(
+                    "Failed to parse SAT witness from solver output."
+                ) from e
             if not self.system.check_witness_consistency(self._witness):
                 raise PyCHCInvalidResultException(
                     "Extracted model is not consistent with the CHC system predicates."
@@ -249,8 +254,13 @@ class CHCSolver(ABC):
         if status == "sat":
             self._status = Status.SAT
             # also remove open-close brackets
-            assert not rest or (rest[0].strip() == "(" and rest[-1].strip() == ")")
-            self._raw_output = "\n".join(rest[1:-1]).strip() if rest else ""
+            if not rest:
+                self._raw_output = ""
+                return
+            if rest[0].strip() == "(" and rest[-1].strip() == ")":
+                rest = rest[1:-1]
+            self._raw_output = "\n".join(rest).strip()
+
         elif status == "unsat":
             self._status = Status.UNSAT
             self._raw_output = "\n".join(rest).strip()

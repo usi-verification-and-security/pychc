@@ -134,16 +134,13 @@ class CHCSystem:
                 f"Clause {clause} (of logic {clause_logic}) outside of system logic {self.logic}"
             )
 
-        if not open_clause.is_implies():
-            raise PyCHCInvalidSystemException(
-                f"Clause {clause} must be an implication."
-            )
+        if open_clause.is_implies():
+            head = open_clause.arg(1)
+            if len(self.predicates & head.get_free_variables()) > 1:
+                raise PyCHCInvalidSystemException(
+                    f"Clause {clause} has multiple predicates in head."
+                )
 
-        head = open_clause.arg(1)
-        if len(self.predicates & head.get_free_variables()) > 1:
-            raise PyCHCInvalidSystemException(
-                f"Clause {clause} has multiple predicates in head."
-            )
         idx = len(self.clauses)
         self.clauses.append(clause)
         return idx
@@ -264,15 +261,11 @@ class CHCSystem:
                     f"Solver {smt_validator.NAME} produced an invalid model for the system. See satisfiable query: {smt_validator.get_smt2_file()}"
                 )
             if smt_validator.proof_checker:
-                if not smt_validator.is_valid_proof():
-                    raise PyCHCInvalidResultException(
-                        f"SMT solver {smt_validator.NAME} produced an invalid proof. See proof file: {smt_validator.get_proof_file()} for query {smt_validator.get_smt2_file()}"
-                    )
+                smt_validator.validate_proof()
             else:
                 logging.warning(
                     f"No proof checker set for SMT solver {smt_validator.NAME}, skipping proof validation"
                 )
-                # TODO: make the proof available
         self.status = Status.SAT
         self.witness = witness
 
