@@ -152,7 +152,7 @@ class Z3CHCSolver(CHCSolver, SMTSolver):
 
             # assuming that sending raw commands is not considered part of the timeout
             for i, line in enumerate(input_file.read_text().splitlines()):
-                if line.strip():
+                if line.strip() and not line.strip().startswith(";"):
                     res = self._send_raw_command(line, timeout=timeout)
 
             if res == "sat":
