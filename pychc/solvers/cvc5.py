@@ -42,7 +42,7 @@ class CVC5Solver(SMTSolver):
 
     def __init__(
         self,
-        logic: Logic,
+        logic: Optional[Logic] = None,
         binary_path: Optional[Path] = None,
         **options,
     ):

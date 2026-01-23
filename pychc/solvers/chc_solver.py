@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-import tempfile, logging
+import logging
 
 from shutil import which
 from pathlib import Path
@@ -8,6 +8,7 @@ from abc import ABC, abstractmethod
 from subprocess import run, CalledProcessError, TimeoutExpired
 from typing import Optional
 
+from pychc.parser import decide_result
 from pychc.solvers.proof_checker import ProofChecker
 from pychc.solvers.smt_solver import SMTSolver
 from pychc.solvers.witness import SatWitness, UnsatWitness, Witness, Status, ProofFormat
@@ -17,6 +18,7 @@ from pychc.exceptions import (
     PyCHCInvalidResultException,
     PyCHCSolverException,
     PyCHCInternalException,
+    PyCHCUnknownResultException,
 )
 
 
@@ -150,25 +152,41 @@ class CHCSolver(ABC):
     def solve(self, timeout: Optional[int] = None, validate=False) -> Status:
         """
         Run the solver on the provided CHC system.
-
-        :param timeout: optional timeout in seconds
-        :return: solving status (SAT/UNSAT/UNKNOWN)
+        Stores solving status and witness internally.
+        If validate=True, the witness is validated using the configured
+        SMT validator or proof checker.
+        Otherwise, the witness is not parsed and can be obtained later.
         """
-
         if not self.system:
             raise PyCHCSolverException("No CHC system loaded in solver")
+        # serialize the input system
+        input_file = self.get_input_file()
+        self._run_and_read_output(input_file, timeout, validate)
+        return self._status
 
+    def run(self, path: Path, timeout: Optional[int] = None, validate=False) -> Status:
+        """
+        Run the solver on the provided CHC system file.
+        If the output is sat + model or unsat + proof, it will be
+        parsed and stored internally.
+        Otherwise, PyCHCUnknownResultException is raised.
+        """
+        if path is None or not path.is_file():
+            raise PyCHCSolverException("Provided path is not a valid file")
+        self._run_and_read_output(path, timeout, validate)
+        return self._status
+
+    def _run_and_read_output(
+        self, sys_file: Path, timeout: Optional[int] = None, validate=False
+    ):
         # Always ask for a witness.
         expected_validation = True  # self.smt_validator or self.proof_format
         self.chc_options.set_print_witness(expected_validation, self.proof_format)
         args_extra = self.chc_options.to_array()
 
-        # serialize the input system
-        input_file = self.get_input_file()
-
-        args = [str(self._solver_path), str(input_file)] + args_extra
+        args = [str(self._solver_path), str(sys_file)] + args_extra
+        logging.debug(f"Running {self.NAME}: {' '.join(args)}")
         try:
-            logging.debug(f"Running {self.NAME}: {' '.join(args)}")
             proc = run(
                 args, capture_output=True, text=True, check=True, timeout=timeout
             )
@@ -186,17 +204,16 @@ class CHCSolver(ABC):
 
         # Understand if SAT/UNSAT/UNKNOWN
         # this sets self._status and self._raw_output
-        self._decide_result(raw_output)
+        self._status, self._raw_output = decide_result(raw_output)
 
         if self._status != Status.UNKNOWN and validate:
+            # parse and validate the witness
             self.validate_witness()
-
-        return self._status
 
     def get_witness(self) -> Optional[Witness]:
         """
-        Return a model/witness. Must be called after a `solve()` with `get_witness=True`
-        that returned `Status.SAT` or `Status.UNSAT`.
+        Parses the output to obtain a witness.
+        Must be called after a `solve()`.
         """
         if self._witness:
             return self._witness
@@ -210,7 +227,7 @@ class CHCSolver(ABC):
                 raise PyCHCSolverException(
                     "Failed to parse SAT witness from solver output."
                 ) from e
-            if not self.system.check_witness_consistency(self._witness):
+            if self.system and not self.system.check_witness_consistency(self._witness):
                 raise PyCHCInvalidResultException(
                     "Extracted model is not consistent with the CHC system predicates."
                 )
@@ -220,6 +237,12 @@ class CHCSolver(ABC):
         return self._witness
 
     def validate_witness(self):
+        """
+        Obtains and validates the witness.
+        Raises PyCHCInvalidResultException if the witness is invalid.
+        """
+        if not self.system:
+            raise PyCHCSolverException("No CHC system loaded in solver")
         if not self._witness:
             self.get_witness()
         assert self._witness
@@ -243,26 +266,3 @@ class CHCSolver(ABC):
         Return the solving status. Must be called after `solve()`.
         """
         return self._status
-
-    def _decide_result(self, text: str) -> None:
-        """
-        Decide the solving result (SAT/UNSAT/UNKNOWN) from the solver output.
-        Sets self._status: Status and self._raw_output: str.
-        """
-        # status is first line, the rest is self._raw_output
-        status, *rest = text.splitlines()
-        if status == "sat":
-            self._status = Status.SAT
-            # also remove open-close brackets
-            if not rest:
-                self._raw_output = ""
-                return
-            if rest[0].strip() == "(" and rest[-1].strip() == ")":
-                rest = rest[1:-1]
-            self._raw_output = "\n".join(rest).strip()
-
-        elif status == "unsat":
-            self._status = Status.UNSAT
-            self._raw_output = "\n".join(rest).strip()
-        else:
-            self._status = Status.UNKNOWN

@@ -13,8 +13,11 @@ from pysmt.fnode import FNode
 from pysmt.smtlib.printers import SmtPrinter
 from pysmt.typing import BOOL
 
-from pychc.exceptions import PyCHCInvalidResultException, PyCHCInvalidSystemException
-from pychc.solvers import proof_checker, witness
+from pychc.exceptions import (
+    PyCHCInvalidResultException,
+    PyCHCInvalidSystemException,
+)
+from pychc.solvers import proof_checker
 from pychc.solvers.smt_solver import SMTSolver
 from pychc.solvers.witness import SatWitness, UnsatWitness, Witness, Status
 
@@ -55,7 +58,9 @@ class CHCSystem:
         [sys.add_predicate(pred) for pred in predicates]
         [sys.add_clause(clause) for clause in clauses]
 
-        sys.smt2file = Path(path)
+        # do not set sys.smt2file.
+        # sys.smt2file must be created with PySMT serializer
+        # to remove comments and ensuring one last (check-sat)
 
         return sys
 
@@ -237,6 +242,9 @@ class CHCSystem:
     def validate_sat_model(self, witness: SatWitness, smt_validator: SMTSolver):
         from pysmt.oracles import get_logic
 
+        if not smt_validator.get_logic():
+            smt_validator.set_logic(self.get_logic())
+
         queries = self._get_validate_model_queries(witness)
         for query in queries:
             query_logic = get_logic(query)
@@ -262,17 +270,20 @@ class CHCSystem:
                 )
             if smt_validator.proof_checker:
                 smt_validator.validate_proof()
-            else:
-                logging.warning(
-                    f"No proof checker set for SMT solver {smt_validator.NAME}, skipping proof validation"
-                )
+            # else:
+            #     logging.warning(
+            #         f"No proof checker set for SMT solver {smt_validator.NAME}, skipping proof validation"
+            #     )
         self.status = Status.SAT
         self.witness = witness
 
     def validate_unsat_proof(
-        self, witness: UnsatWitness, proof_checker: proof_checker.ProofChecker
+        self, witness: UnsatWitness, proof_checker: proof_checker.ProofChecker, use_smt2file: Optional[Path]=None
     ):
-        smt2file = self.get_smt2file()
+        if use_smt2file:
+            smt2file = use_smt2file
+        else:
+            smt2file = self.get_smt2file()
         proof_file = Path(tempfile.NamedTemporaryFile("w", suffix=".proof").name)
         with open(proof_file, "w") as pf:
             pf.write(witness.text)

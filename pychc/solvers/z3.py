@@ -16,7 +16,6 @@ from pysmt.logics import (
     LRA,
     UFLIRA,
 )
-from pysmt.shortcuts import get_env
 
 from pychc.solvers.witness import ProofFormat, Status
 from pychc.solvers.chc_solver import CHCSolver, CHCSolverOptions
@@ -46,7 +45,7 @@ class Z3SMTSolver(SMTSolver):
 
     def __init__(
         self,
-        logic: Logic,
+        logic: Optional[Logic] = None,
         binary_path: Optional[Path] = None,
         **options,
     ):
@@ -97,16 +96,12 @@ class Z3CHCSolver(CHCSolver, SMTSolver):
         # do nothing, logic is set via input file
         pass
 
-    def _send_raw_command(self, cmd: str, timeout: Optional[int] = None) -> str:
+    def _send_raw_command(self, cmd: str):
         """Send a raw text command to the solver."""
         self._debug("Sending raw command: %s", cmd)
         self.commands[-1].append(cmd)
         self.solver_stdin.write(cmd + "\n")
         self.solver_stdin.flush()
-        res = self._get_answer(timeout=timeout)
-        if res not in {"success", "sat", "unsat", "unknown"}:
-            raise PyCHCSolverException(f"Unexpected response from {self.NAME}: {res}")
-        return res
 
     def _get_answer(self, timeout: Optional[int] = None) -> str:
         """Reads a line from STDOUT pipe"""
@@ -129,49 +124,69 @@ class Z3CHCSolver(CHCSolver, SMTSolver):
 
         self._send_command(SmtLibCommand(smtcmd.GET_MODEL, []))
 
-    def solve(self, timeout: Optional[int] = None, validate: bool = False) -> Status:
-        if not self.system:
-            raise PyCHCSolverException("No CHC system loaded in solver")
+    def _run_and_read_output(
+        self, sys_file: Path, timeout: Optional[int] = None, validate: bool = False
+    ) -> Status:
+        # This method overrides CHCSolver._run_and_read_output
+        # because we need to interact with the solver process to ask
+        # for a model/proof, instead of using command line flags.
+
+        # This works for both run() and solve() methods
+        # i.e, when running an input CHC system "as is" and trying to read the output,
+        # or when running a loaded CHC system (serialized in system + check-sat).
+        # At the end, we ensure to ask for a model/proof (if not already asked).
 
         # Spawn the SMT solver process
         SMTSolver.__init__(
             self,
             logic=QF_LRA,  # Dummy logic, overridden later
             binary_path=self._solver_path.parent,
-            cmd_args=["-in"] + self.chc_options.to_array(),
-            solver_options={"debug_interaction": True},
+            cmd_args=["-in"] + self.chc_options.to_array()
         )
 
-        # Always ask for a witness.
-        expected_validation = True  # self.smt_validator or self.proof_format
-
-        input_file = self.get_input_file()
+        from pychc.parser import scan_commands_in_smtlib_file
 
         try:
-            res = None
-
-            # assuming that sending raw commands is not considered part of the timeout
-            for i, line in enumerate(input_file.read_text().splitlines()):
-                if line.strip() and not line.strip().startswith(";"):
-                    res = self._send_raw_command(line, timeout=timeout)
-
-            if res == "sat":
-                self._status = Status.SAT
-                if expected_validation:
-                    # send command (get-model)
-                    self._get_model()
-                    raw_output = self._get_long_answer()
-                    self._raw_output = "\n".join(raw_output.splitlines()[1:-1])
-
-            elif res == "unsat":
-                self._status = Status.UNSAT
-                if expected_validation:
-                    # send command (get-proof)
-                    self._send_command_get_proof()
+            commands = scan_commands_in_smtlib_file(sys_file)
+            for cmd in commands:
+                if cmd == "(exit)":
+                    continue  # we will exit later
+                self._send_raw_command(cmd)
+                if cmd == "(get-model)" or cmd == "(get-proof)":
+                    # wait for a possibly multi-line answer
                     self._raw_output = self._get_long_answer()
-            else:
-                self._status = Status.UNKNOWN
+                else:
+                    # read a single-line answer
+                    answer = self._get_answer(timeout)
+                    if "error" in answer.lower():
+                        raise PyCHCSolverException(
+                            f"{self.NAME} reported an error: {answer}"
+                        )
+                    if answer not in {"success", "exit", "sat", "unsat", "unknown"}:
+                        raise PyCHCSolverException(
+                            f"Unexpected response from {self.NAME}: {answer}"
+                        )
+                    if answer == "sat":
+                        self._status = Status.SAT
+                    elif answer == "unsat":
+                        self._status = Status.UNSAT
+                    elif answer == "unknown":
+                        self._status = Status.UNKNOWN
 
+            if self._status != Status.UNKNOWN and not self._raw_output:
+                # if the file contains a (check-sat) command,
+                # and no (get-model)/(get-proof) command,
+                # we request the witness now
+                if self._status == Status.SAT:
+                    self._send_raw_command("(get-model)")
+                    self._raw_output = self._get_long_answer()
+                elif self._status == Status.UNSAT:
+                    self._send_raw_command("(get-proof)")
+                    self._raw_output = self._get_long_answer()
+
+            # Finally, remove possible surrounding parentheses from SAT raw_output
+            if self._status == Status.SAT and self._raw_output:
+                self._raw_output = "\n".join(self._raw_output.splitlines()[1:-1])
             # quit the solver
             self.exit()
 
@@ -181,6 +196,7 @@ class Z3CHCSolver(CHCSolver, SMTSolver):
             self._status = Status.UNKNOWN
             raise PyCHCSolverException(f"{self.NAME} execution failed")
         except TimeoutExpired as err:
+            self.exit()
             logging.error(f"{self.NAME} execution timed out after {timeout} seconds")
             self._status = Status.UNKNOWN
             return self._status

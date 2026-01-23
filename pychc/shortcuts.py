@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from pathlib import Path
 from typing import Optional
 
 from pysmt.fnode import FNode
@@ -68,3 +69,20 @@ def IntDiv(left: FNode, right: FNode) -> FNode:
     Integer division operator shortcut (SMT-LIB: div).
     """
     return get_env().formula_manager.IntDiv(left, right)
+
+
+class SMTLibFormula(FNode):
+
+    @classmethod
+    def load_from_file(cls, file_path: Path) -> FNode:
+        """
+        Load a formula from an SMT-LIBv2 file.
+
+        :param file_path: path to the SMT-LIBv2 file
+        :return: the asserted formula in the file
+        """
+        from pychc.parser import CHCSmtLibParser
+
+        parser = CHCSmtLibParser()
+        script = parser.get_script_fname(str(file_path))
+        return script.get_last_formula()

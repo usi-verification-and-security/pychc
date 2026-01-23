@@ -1,6 +1,7 @@
 from __future__ import annotations
 
-import tempfile, logging
+from subprocess import TimeoutExpired
+import tempfile
 
 from io import StringIO
 from pathlib import Path
@@ -14,9 +15,13 @@ from pysmt.smtlib.solver import SmtLibSolver, SmtLibOptions
 from pysmt.environment import get_env
 from pysmt.logics import Logic
 
-from pychc.solvers.witness import ProofFormat
+from pychc.solvers.witness import ProofFormat, Status, Status
 from pychc.solvers.proof_checker import ProofChecker
-from pychc.exceptions import PyCHCInvalidResultException, PyCHCSolverException, PyCHCInternalException
+from pychc.exceptions import (
+    PyCHCInvalidResultException,
+    PyCHCSolverException,
+    PyCHCInternalException,
+)
 
 
 class SMTSolverOptions(SmtLibOptions):
@@ -73,7 +78,7 @@ class SMTSolver(SmtLibSolver):
 
     def __init__(
         self,
-        logic: Logic,
+        logic: Optional[Logic] = None,
         binary_path: Optional[Path] = None,
         cmd_args: Optional[list[str]] = None,
         proof_checker: Optional[ProofChecker] = None,
@@ -91,28 +96,52 @@ class SMTSolver(SmtLibSolver):
                 f"Executable for {self.NAME} not found at: {self._solver_path}"
             )
 
-        if not any(logic <= l for l in self.LOGICS):
-            raise PyCHCSolverException(
-                f"Logic {logic} not supported by solver {self.NAME}"
-            )
-        # Try to upgrade to quantified logic, if supported
-        q_logic = logic.get_quantified_version()
-        if not any(logic <= l for l in self.LOGICS):
-            self.logic = q_logic
-        else:
-            self.logic = logic
+        if logic:
+            if not any(logic <= l for l in self.LOGICS):
+                raise PyCHCSolverException(
+                    f"Logic {logic} not supported by solver {self.NAME}"
+                )
+            # Try to upgrade to quantified logic, if supported
+            q_logic = logic.get_quantified_version()
+            if any(q_logic <= l for l in self.LOGICS):
+                logic = q_logic
+        self.logic = logic
 
         # Needed to track relevant commands for proof checking
         self.commands = [[]]
 
         # Create an interactive subprocess with the solver binary
         env = get_env()
-        args = [str(self._solver_path)] + (cmd_args if cmd_args else [])
+        self.cmd_line = [str(self._solver_path)] + (cmd_args if cmd_args else [])
+        
+        # super() needs a logic. we use a dummy one if none is provided
+        dummy_logic = self.logic if self.logic else next(iter(self.LOGICS), None)
+        self._do_not_set_logic = self.logic is None
         super().__init__(
-            args=args, environment=env, logic=logic, LOGICS=self.LOGICS, **options
+            args=self.cmd_line,
+            environment=env,
+            logic=dummy_logic,
+            LOGICS=self.LOGICS,
+            **options,
         )
+        # restore logic to None  if it was not provided
+        if self._do_not_set_logic:
+            self.logic = None
+        self._do_not_set_logic = False
 
+        self._status = None
+        self._proof = None
         self.set_proof_checker(proof_checker)
+
+    def set_logic(self, logic: Logic) -> None:
+        if self._do_not_set_logic:
+            return
+        if not any(logic <= l for l in self.LOGICS):
+            raise PyCHCSolverException(
+                f"Logic {logic} not supported by solver {self.NAME}"
+            )
+        super().set_logic(logic)
+        self.logic = logic
 
     def get_logic(self) -> Logic:
         return self.logic
@@ -144,15 +173,10 @@ class SMTSolver(SmtLibSolver):
 
     def _send_command(self, cmd):
         """Sends a command to the STDIN pipe."""
-        self.delete_files()
-        self._debug("Sending: %s", cmd.serialize_to_string())
         string_io = StringIO()
         cmd.serialize(string_io, daggify=True)
         val = string_io.getvalue()
-        self.commands[-1].append(val.strip())
-        self.solver_stdin.write(val)
-        self.solver_stdin.write("\n")
-        self.solver_stdin.flush()
+        self._send_raw_command(val.strip())
 
     def reset_assertions(self):
         super().reset_assertions()
@@ -173,7 +197,8 @@ class SMTSolver(SmtLibSolver):
         Request a proof/certificate from the solver using `(get-proof)`.
         """
         self._send_command_get_proof()
-        return self._get_long_answer()
+        self._proof = self._get_long_answer()
+        return self._proof
 
     def delete_files(self) -> None:
         try:
@@ -201,12 +226,17 @@ class SMTSolver(SmtLibSolver):
         """
         Request a proof from the solver and validate it using the configured proof checker
         """
+        if not self.proof_checker:
+            raise PyCHCSolverException(
+                f"Cannot validate proof: no proof checker configured for solver {self.NAME}"
+            )
         self.get_proof_file()
         self.get_smt2_file()
         ok = self.proof_checker.validate(self.proof_file, self.smt2file)
         if not ok:
             raise PyCHCInvalidResultException(
-                f"SMT solver {SMTSolver.NAME} produced an invalid proof. See proof file: {self.get_proof_file()} for query {self.get_smt2_file()}")
+                f"SMT solver {SMTSolver.NAME} produced an invalid proof. See proof file: {self.get_proof_file()} for query {self.get_smt2_file()}"
+            )
         self.delete_files()
 
     def _get_long_answer(self) -> str:
@@ -215,11 +245,13 @@ class SMTSolver(SmtLibSolver):
         # After first data, switch to idle-timeout mode to detect completion
         # Enforce a hard max timeout of 10s for the entire read
         buf: list[str] = []
+        err_str : list[str] = []
         start = time()
-        idle_timeout = 0.1  # seconds to wait for more data after first chunk
+        idle_timeout = 1  # seconds to wait for more data after first chunk
         max_timeout = 10.0  # hard cap for overall read
 
         fd = self.solver.stdout  # raw buffered reader from Popen
+        fe = self.solver.stderr  # raw buffered reader from Popen
         got_first_chunk = False
 
         while True:
@@ -230,14 +262,22 @@ class SMTSolver(SmtLibSolver):
             # Before first chunk: wait up to remaining time (blocking)
             # After first chunk: wait only idle_timeout (bounded by remaining)
             wait = remaining if not got_first_chunk else min(idle_timeout, remaining)
-            rlist, _, _ = select([fd], [], [], wait)
+            rlist, _, _ = select([fd, fe], [], [], wait)
             if rlist:
-                chunk = fd.read1(8192)
-                if not chunk:
-                    # EOF
-                    break
-                buf.append(chunk.decode("utf-8", errors="replace"))
-                got_first_chunk = True
+                if fe in rlist:
+                    # Read all from stderr and log
+                    chunk = fe.read1(8192)
+                    if not chunk:
+                        break
+                    err_str.append(chunk.decode("utf-8", errors="replace").strip())
+                if fd in rlist:
+                    chunk = fd.read1(8192)
+                    if not chunk:
+                        break
+                    chunk_str = chunk.decode("utf-8", errors="replace")
+                    buf.append(chunk_str)
+                    if chunk_str != '(\n':
+                        got_first_chunk = True
                 continue
             else:
                 # No data arrived within the wait window
@@ -246,7 +286,78 @@ class SMTSolver(SmtLibSolver):
                     break
                 # Otherwise, keep waiting until max_timeout expires
                 continue
-
+        if err_str:
+            raise PyCHCSolverException(
+                f"{self.NAME} reported an error: {''.join(err_str)}"
+            )
         proof = "".join(buf).strip()
         self._debug("Read proof bytes: %d", len(proof))
         return proof
+
+    def _send_raw_command(self, cmd: str):
+        """Send a raw text command to the solver."""
+        self._debug("Sending raw command: %s", cmd)
+        self.commands[-1].append(cmd)
+        self.solver_stdin.write(cmd + "\n")
+        self.solver_stdin.flush()
+
+    def _get_answer(self, timeout: Optional[int] = None) -> str:
+        """Reads a line from STDOUT pipe"""
+        if timeout is None:
+            res = self.solver_stdout.readline().strip()
+        else:
+            import select
+
+            out, _, _ = select.select([self.solver_stdout], [], [], timeout)
+            if out:
+                res = self.solver_stdout.readline().strip()
+            else:
+                raise TimeoutExpired(cmd=self.NAME, timeout=timeout)
+        self._debug("Read: %s", res)
+        return res
+
+    def run(self, path: Path, timeout: Optional[int] = None) -> Status:
+        """
+        Run the solver on the provided SMT-LIBv2 file.
+        If the output is sat/unsat + something, the status will
+        parsed and stored internally.
+        If unsat, the following output is stored as the proof.
+        Otherwise, PyCHCUnknownResultException is raised.
+        """
+        if path is None or not path.is_file():
+            raise PyCHCSolverException("Provided path is not a valid file")
+
+        from pychc.parser import scan_commands_in_smtlib_file
+
+        commands = scan_commands_in_smtlib_file(path)
+        for cmd in commands:
+            if cmd == "(exit)":
+                continue  # we will exit later
+            self._send_raw_command(cmd)
+            if cmd == "(push)":
+                self.push()
+            elif cmd == "(pop)":
+                self.pop()
+            elif cmd == "(get-model)":
+                self.get_model()
+            elif cmd == "(get-proof)":
+                self.get_proof()
+            else:
+                # read a single-line answer
+                answer = self._get_answer(timeout)
+                if "error" in answer.lower():
+                    raise PyCHCSolverException(
+                        f"{self.NAME} reported an error: {answer}"
+                    )
+                if answer not in {"success", "exit", "sat", "unsat", "unknown"}:
+                    raise PyCHCSolverException(
+                        f"Unexpected response from {self.NAME}: {answer}"
+                    )
+                if answer == "sat":
+                    self._status = Status.SAT
+                elif answer == "unsat":
+                    self._status = Status.UNSAT
+                elif answer == "unknown":
+                    self._status = Status.UNKNOWN
+
+        return self._status

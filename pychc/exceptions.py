@@ -34,3 +34,9 @@ class PyCHCSolverException(PyCHCException):
     """
     Exception for solver errors
     """
+
+
+class PyCHCUnknownResultException(PyCHCException):
+    """
+    Exception for unknown solver results
+    """
