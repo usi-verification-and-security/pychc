@@ -96,28 +96,6 @@ class Z3CHCSolver(CHCSolver, SMTSolver):
         # do nothing, logic is set via input file
         pass
 
-    def _send_raw_command(self, cmd: str):
-        """Send a raw text command to the solver."""
-        self._debug("Sending raw command: %s", cmd)
-        self.commands[-1].append(cmd)
-        self.solver_stdin.write(cmd + "\n")
-        self.solver_stdin.flush()
-
-    def _get_answer(self, timeout: Optional[int] = None) -> str:
-        """Reads a line from STDOUT pipe"""
-        if timeout is None:
-            res = self.solver_stdout.readline().strip()
-        else:
-            import select
-
-            out, _, _ = select.select([self.solver_stdout], [], [], timeout)
-            if out:
-                res = self.solver_stdout.readline().strip()
-            else:
-                raise TimeoutExpired(cmd=self.NAME, timeout=timeout)
-        self._debug("Read: %s", res)
-        return res
-
     def _get_model(self) -> None:
         from pysmt.smtlib.script import SmtLibCommand
         import pysmt.smtlib.commands as smtcmd
@@ -141,10 +119,12 @@ class Z3CHCSolver(CHCSolver, SMTSolver):
             self,
             logic=QF_LRA,  # Dummy logic, overridden later
             binary_path=self._solver_path.parent,
-            cmd_args=["-in"] + self.chc_options.to_array()
+            cmd_args=["-in"] + self.chc_options.to_array(),
         )
 
         from pychc.parser import scan_commands_in_smtlib_file
+
+        self.set_timeout(timeout)
 
         try:
             commands = scan_commands_in_smtlib_file(sys_file)
@@ -157,7 +137,7 @@ class Z3CHCSolver(CHCSolver, SMTSolver):
                     self._raw_output = self._get_long_answer()
                 else:
                     # read a single-line answer
-                    answer = self._get_answer(timeout)
+                    answer = self._get_answer()
                     if "error" in answer.lower():
                         raise PyCHCSolverException(
                             f"{self.NAME} reported an error: {answer}"
@@ -197,7 +177,9 @@ class Z3CHCSolver(CHCSolver, SMTSolver):
             raise PyCHCSolverException(f"{self.NAME} execution failed")
         except TimeoutExpired as err:
             self.exit()
-            logging.error(f"{self.NAME} execution timed out after {timeout} seconds")
+            logging.info(
+                f"{self.NAME} execution timed out after {self.timeout} seconds"
+            )
             self._status = Status.UNKNOWN
             return self._status
 

@@ -78,6 +78,7 @@ class CHCSolver(ABC):
         binary_path: Optional[Path] = None,
         smt_validator: Optional[SMTSolver] = None,
         proof_checker: Optional[ProofChecker] = None,
+        name: Optional[str] = None
     ):
         self.system: Optional[CHCSystem] = None
 
@@ -100,6 +101,10 @@ class CHCSolver(ABC):
 
         self.set_smt_validator(smt_validator)
         self.set_proof_checker(proof_checker)
+        self._name = name if name else self.NAME
+
+    def get_name(self) -> str:
+        return self._name
 
     def set_smt_validator(self, smt_validator: Optional[SMTSolver]) -> None:
         """
@@ -196,7 +201,7 @@ class CHCSolver(ABC):
             self._status = Status.UNKNOWN
             raise PyCHCSolverException(f"{self.NAME} execution failed")
         except TimeoutExpired as err:
-            logging.error(f"{self.NAME} execution timed out after {timeout} seconds")
+            logging.info(f"{self.NAME} execution timed out after {timeout} seconds")
             self._status = Status.UNKNOWN
             return self._status
 
@@ -236,7 +241,7 @@ class CHCSolver(ABC):
 
         return self._witness
 
-    def validate_witness(self):
+    def validate_witness(self, timeout: Optional[int] = None) -> None:
         """
         Obtains and validates the witness.
         Raises PyCHCInvalidResultException if the witness is invalid.
@@ -251,13 +256,13 @@ class CHCSolver(ABC):
                 raise PyCHCException(
                     "No SMT validator set for requested witness validation."
                 )
-            self.system.validate_sat_model(self._witness, self.smt_validator)
+            self.system.validate_sat_model(self._witness, self.smt_validator, timeout=timeout)
         elif self._status == Status.UNSAT:
             if not self.proof_checker:
                 raise PyCHCException(
                     "No proof checker set for requested proof validation."
                 )
-            self.system.validate_unsat_proof(self._witness, self.proof_checker)
+            self.system.validate_unsat_proof(self._witness, self.proof_checker, timeout=timeout)
         else:
             raise PyCHCException("Cannot validate witness for UNKNOWN status.")
 

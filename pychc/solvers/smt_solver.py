@@ -107,13 +107,22 @@ class SMTSolver(SmtLibSolver):
                 logic = q_logic
         self.logic = logic
 
+        self.proof_checker = proof_checker
+
         # Needed to track relevant commands for proof checking
         self.commands = [[]]
 
+        # Timeout for each read operation
+        self.timeout: Optional[int] = None
+
+        self.cmd_line = [str(self._solver_path)] + (cmd_args if cmd_args else [])
+        self._extra_options = options
+
+        self.recreate_process()
+
+    def recreate_process(self) -> None:
         # Create an interactive subprocess with the solver binary
         env = get_env()
-        self.cmd_line = [str(self._solver_path)] + (cmd_args if cmd_args else [])
-        
         # super() needs a logic. we use a dummy one if none is provided
         dummy_logic = self.logic if self.logic else next(iter(self.LOGICS), None)
         self._do_not_set_logic = self.logic is None
@@ -122,7 +131,7 @@ class SMTSolver(SmtLibSolver):
             environment=env,
             logic=dummy_logic,
             LOGICS=self.LOGICS,
-            **options,
+            **self._extra_options,
         )
         # restore logic to None  if it was not provided
         if self._do_not_set_logic:
@@ -131,7 +140,10 @@ class SMTSolver(SmtLibSolver):
 
         self._status = None
         self._proof = None
-        self.set_proof_checker(proof_checker)
+        self.smt2file = None
+        self.proof_file = None
+
+        self._set_proof_checker_option()
 
     def set_logic(self, logic: Logic) -> None:
         if self._do_not_set_logic:
@@ -146,15 +158,20 @@ class SMTSolver(SmtLibSolver):
     def get_logic(self) -> Logic:
         return self.logic
 
+    def set_timeout(self, timeout: Optional[int]) -> None:
+        self.timeout = timeout
+
     def set_proof_checker(self, proof_checker: Optional[ProofChecker]) -> None:
         """
         Set or change the proof checker used for validating proofs.
         """
         self.proof_checker = proof_checker
-        if proof_checker is None:
+
+    def _set_proof_checker_option(self) -> None:
+        if self.proof_checker is None:
             self.options.set_produce_proofs(False)
         else:
-            self.options.set_produce_proofs(True, proof_checker.get_proof_format())
+            self.options.set_produce_proofs(True, self.proof_checker.get_proof_format())
         self.options(self)
 
     def get_proof_format(self) -> Optional[ProofFormat]:
@@ -245,14 +262,14 @@ class SMTSolver(SmtLibSolver):
         # After first data, switch to idle-timeout mode to detect completion
         # Enforce a hard max timeout of 10s for the entire read
         buf: list[str] = []
-        err_str : list[str] = []
+        err_str: list[str] = []
         start = time()
         idle_timeout = 1  # seconds to wait for more data after first chunk
-        max_timeout = 10.0  # hard cap for overall read
+        max_timeout = 20.0  # hard cap for overall read
 
         fd = self.solver.stdout  # raw buffered reader from Popen
         fe = self.solver.stderr  # raw buffered reader from Popen
-        got_first_chunk = False
+        parenthesis = 0
 
         while True:
             remaining = max_timeout - (time() - start)
@@ -261,7 +278,7 @@ class SMTSolver(SmtLibSolver):
 
             # Before first chunk: wait up to remaining time (blocking)
             # After first chunk: wait only idle_timeout (bounded by remaining)
-            wait = remaining if not got_first_chunk else min(idle_timeout, remaining)
+            wait = remaining if parenthesis == 0 else min(idle_timeout, remaining)
             rlist, _, _ = select([fd, fe], [], [], wait)
             if rlist:
                 if fe in rlist:
@@ -276,12 +293,11 @@ class SMTSolver(SmtLibSolver):
                         break
                     chunk_str = chunk.decode("utf-8", errors="replace")
                     buf.append(chunk_str)
-                    if chunk_str != '(\n':
-                        got_first_chunk = True
+                    parenthesis += chunk_str.count("(") - chunk_str.count(")")
                 continue
             else:
                 # No data arrived within the wait window
-                if got_first_chunk:
+                if parenthesis == 0:
                     # Consider stream idle -> done
                     break
                 # Otherwise, keep waiting until max_timeout expires
@@ -301,18 +317,20 @@ class SMTSolver(SmtLibSolver):
         self.solver_stdin.write(cmd + "\n")
         self.solver_stdin.flush()
 
-    def _get_answer(self, timeout: Optional[int] = None) -> str:
+    def _get_answer(self) -> str:
         """Reads a line from STDOUT pipe"""
-        if timeout is None:
+        if self.timeout is None:
             res = self.solver_stdout.readline().strip()
         else:
             import select
 
-            out, _, _ = select.select([self.solver_stdout], [], [], timeout)
+            out, _, _ = select.select([self.solver_stdout], [], [], self.timeout)
             if out:
                 res = self.solver_stdout.readline().strip()
             else:
-                raise TimeoutExpired(cmd=self.NAME, timeout=timeout)
+                self.exit()
+                self.recreate_process()
+                raise TimeoutExpired(cmd=self.NAME, timeout=self.timeout)
         self._debug("Read: %s", res)
         return res
 
@@ -329,6 +347,8 @@ class SMTSolver(SmtLibSolver):
 
         from pychc.parser import scan_commands_in_smtlib_file
 
+        self.set_timeout(timeout)
+
         commands = scan_commands_in_smtlib_file(path)
         for cmd in commands:
             if cmd == "(exit)":
@@ -344,7 +364,7 @@ class SMTSolver(SmtLibSolver):
                 self.get_proof()
             else:
                 # read a single-line answer
-                answer = self._get_answer(timeout)
+                answer = self._get_answer()
                 if "error" in answer.lower():
                     raise PyCHCSolverException(
                         f"{self.NAME} reported an error: {answer}"

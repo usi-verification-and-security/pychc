@@ -33,7 +33,7 @@ class CHCSystem:
         self.witness = None
 
     @classmethod
-    def load_from_smtlib(cls, path: Path) -> CHCSystem:
+    def load_from_smtlib(cls, path: Path, logic: Optional[Logic] = None) -> CHCSystem:
         """Load a CHC system from an SMT-LIB file."""
         from pychc.parser import CHCSmtLibParser
         from pysmt.oracles import get_logic
@@ -51,7 +51,8 @@ class CHCSystem:
         clauses = list(map(get_content, script.filter_by_command_name("assert")))
 
         # determine logic
-        logic = max(map(get_logic, clauses))
+        if logic is None:
+            logic = max(map(get_logic, clauses))
 
         # create system
         sys = cls(logic)
@@ -239,13 +240,25 @@ class CHCSystem:
 
         return set(map(_substitute_clause, self.get_clauses()))
 
-    def validate_sat_model(self, witness: SatWitness, smt_validator: SMTSolver):
+    def validate_sat_model(
+        self,
+        witness: SatWitness,
+        smt_validator: SMTSolver,
+        timeout: Optional[int] = None,
+    ):
         from pysmt.oracles import get_logic
 
-        if not smt_validator.get_logic():
-            smt_validator.set_logic(self.get_logic())
-
         queries = self._get_validate_model_queries(witness)
+
+        logic = max(map(get_logic, queries))
+        if not smt_validator.get_logic():
+            if any(logic <= l for l in smt_validator.LOGICS):
+                smt_validator.set_logic(logic)
+            else:
+                smt_validator.set_logic(self.get_logic())
+
+        smt_validator.set_timeout(timeout)
+
         for query in queries:
             query_logic = get_logic(query)
             known_logic = query_logic <= smt_validator.get_logic()
@@ -278,23 +291,13 @@ class CHCSystem:
         self.witness = witness
 
     def validate_unsat_proof(
-        self, witness: UnsatWitness, proof_checker: proof_checker.ProofChecker, use_smt2file: Optional[Path]=None
+        self,
+        witness: UnsatWitness,
+        proof_checker: proof_checker.ProofChecker,
+        timeout: Optional[int] = None,
     ):
-        if use_smt2file:
-            smt2file = use_smt2file
-        else:
-            smt2file = self.get_smt2file()
-        proof_file = Path(tempfile.NamedTemporaryFile("w", suffix=".proof").name)
-        with open(proof_file, "w") as pf:
-            pf.write(witness.text)
-
-        ok = proof_checker.validate(proof_file=proof_file, smt2file=smt2file)
-        if not ok:
-            raise PyCHCInvalidResultException(
-                f"Proof checker {proof_checker.NAME} failed to validate the proof {proof_file} on {smt2file}."
-            )
-        # if everything went fine, delete temp file
-        proof_file.unlink()
+        smt2file = self.get_smt2file()
+        proof_checker.validate_witness(witness, smt2file, timeout=timeout)
         self.status = Status.UNSAT
         self.witness = witness
 

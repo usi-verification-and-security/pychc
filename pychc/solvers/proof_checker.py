@@ -5,10 +5,15 @@ from pathlib import Path
 from abc import ABC, abstractmethod
 from shutil import which
 from subprocess import CalledProcessError, run, TimeoutExpired
+import tempfile
 from typing import Optional
 
-from pychc.exceptions import PyCHCSolverException, PyCHCInternalException
-from pychc.solvers.witness import ProofFormat
+from pychc.exceptions import (
+    PyCHCSolverException,
+    PyCHCInternalException,
+    PyCHCInvalidResultException,
+)
+from pychc.solvers.witness import ProofFormat, UnsatWitness
 
 
 class ProofCheckerOptions:
@@ -76,6 +81,24 @@ class ProofChecker(ABC):
         """
         Get the proof format used by this proof checker, if any.
         """
+
+    def validate_witness(
+        self, witness: UnsatWitness, smt2file: Path, timeout: Optional[int] = None
+    ) -> bool:
+        """
+        Validate the proof contained in the witness against the given smt2 file.
+        """
+        proof_file = Path(tempfile.NamedTemporaryFile("w", suffix=".proof").name)
+        with open(proof_file, "w") as pf:
+            pf.write(witness.text)
+
+        ok = self.validate(proof_file=proof_file, smt2file=smt2file, timeout=timeout)
+        if not ok:
+            raise PyCHCInvalidResultException(
+                f"Proof checker {self.NAME} failed to validate the proof {proof_file} on {smt2file}."
+            )
+        # if everything went fine, delete temp file
+        proof_file.unlink()
 
     def validate(
         self, proof_file: Path, smt2file: Path, timeout: Optional[int] = None
