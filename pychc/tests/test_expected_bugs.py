@@ -20,6 +20,7 @@ old_bin_path = bench_dir / "old_binaries"
 
 ### Spacer / Z3
 
+
 @reset_pysmt_env
 def test_z3_1_issue():
     # https://github.com/Z3Prover/z3/issues/6716
@@ -67,12 +68,10 @@ def test_eldarica_issue():
 
     test = bench_dir / "eldarica.smt2"
     sys = CHCSystem.load_from_smtlib(Path(test))
-    validator = CVC5Solver(proof_checker=Carcara()) 
+    validator = CVC5Solver(proof_checker=Carcara())
 
     # Issue from Eldarica 2.0.9
-    old_eldarica = EldaricaSolver(
-        binary_path=old_bin_path / "eldarica"
-    )
+    old_eldarica = EldaricaSolver(binary_path=old_bin_path / "eldarica")
     old_eldarica.run(test)
     with pytest.raises(PyCHCSolverException):
         sys.validate_sat_model(old_eldarica.get_witness(), validator)
@@ -87,12 +86,23 @@ def test_eldarica_issue():
 
 
 @reset_pysmt_env
+def test_golem_0_issue():
+    # https://github.com/usi-verification-and-security/golem/issues/161
+
+    test = bench_dir / "golem.smt2"
+    golem = GolemSolver()
+    golem.run(test)
+    with pytest.raises(PyCHCInvalidResultException):
+        Carcara().validate_witness(golem.get_witness(), smt2file=test)
+
+
+@reset_pysmt_env
 def test_golem_1_issue():
     # https://github.com/usi-verification-and-security/golem/issues/29
 
     test = bench_dir / "chc-LIA-Lin_110.smt2"
     sys = CHCSystem.load_from_smtlib(Path(test))
-    validator = CVC5Solver(proof_checker=Carcara()) 
+    validator = CVC5Solver(proof_checker=Carcara())
 
     # Issue from Golem 0.4.0
     old_golem = GolemSolver(binary_path=old_bin_path)
@@ -103,6 +113,7 @@ def test_golem_1_issue():
     golem = GolemSolver()
     golem.run(test)
     sys.validate_sat_model(golem.get_witness(), validator)
+
 
 @reset_pysmt_env
 def test_golem_2_issue():
@@ -143,7 +154,9 @@ def test_opensmt_issue():
     opensmt.run(test)
     assert not opensmt.solve()
 
+
 ### CVC5
+
 
 @reset_pysmt_env
 def test_cvc5_1_issue():

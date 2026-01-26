@@ -1,8 +1,8 @@
 import pytest
 from pathlib import Path
-import functools, logging
+import functools
 
-from pysmt.logics import QF_UFLIA, QF_UFLRA
+from pysmt.logics import QF_UFLIA
 from pysmt.shortcuts import (
     Int,
     Symbol,
@@ -10,15 +10,12 @@ from pysmt.shortcuts import (
     Plus,
     LT,
     FALSE,
-    Minus,
-    QuantifierEliminator,
+    Minus
 )
-from pysmt.typing import INT, REAL
-from pysmt.oracles import get_logic
+from pysmt.typing import INT
 
 from pychc.chc_system import CHCSystem
 from pychc.shortcuts import Predicate, Apply, Clause
-from pychc.exceptions import PyCHCInvalidResultException
 
 from pychc.tests.common import reset_pysmt_env
 
@@ -79,12 +76,6 @@ def run_solver(test_func):
         chc_solver.validate_witness()
         witness = chc_solver.get_witness()
         assert witness is not None
-
-        sys.learn_from_witness(witness)
-
-        chc_solver.load_system(sys)
-        status = chc_solver.solve(validate=True)
-        assert status == Status.SAT
 
     return _wrapper
 

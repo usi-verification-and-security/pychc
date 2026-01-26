@@ -1,8 +1,9 @@
+from pathlib import Path
 import pytest
 import functools
 
 from pysmt.logics import QF_UFLIA, QF_UFLRA
-from pysmt.shortcuts import Int, Real, Symbol, And, Equals, Plus
+from pysmt.shortcuts import Int, Real, Symbol, And, Equals, Plus, Implies
 from pysmt.typing import INT, REAL, BOOL, FunctionType
 
 from pychc.chc_system import CHCSystem
@@ -143,7 +144,7 @@ def test_add_clause_valid1(chc_sys_lia):
     chc_sys_lia.add_clause(
         Clause(
             body=And(Apply(inv, [x]), Equals(nx, Plus(x, Int(1))), b),
-            head=And(b, Apply(inv, [nx])),
+            head=Implies(b, Apply(inv, [nx])),
         )
     )
 
