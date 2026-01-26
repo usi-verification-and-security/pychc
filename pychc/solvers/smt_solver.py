@@ -345,12 +345,11 @@ class SMTSolver(SmtLibSolver):
         if path is None or not path.is_file():
             raise PyCHCSolverException("Provided path is not a valid file")
 
-        from pychc.parser import scan_commands_in_smtlib_file
-
         self.set_timeout(timeout)
 
-        commands = scan_commands_in_smtlib_file(path)
-        for cmd in commands:
+        from pychc.parser import scan_commands_in_smtlib_file
+
+        for cmd in scan_commands_in_smtlib_file(path):
             if cmd == "(exit)":
                 continue  # we will exit later
             self._send_raw_command(cmd)
@@ -362,6 +361,8 @@ class SMTSolver(SmtLibSolver):
                 self.get_model()
             elif cmd == "(get-proof)":
                 self.get_proof()
+            elif cmd == "(reset-assertions)":
+                self.reset_assertions()
             else:
                 # read a single-line answer
                 answer = self._get_answer()

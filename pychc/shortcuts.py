@@ -48,13 +48,11 @@ def Clause(body: Optional[FNode] = None, head: FNode = None) -> FNode:
      if not provided, the body is assumed to be TRUE
     :return: a pysmt FNode representing the CHC clause
     """
-    from pysmt.shortcuts import Implies, ForAll, TRUE
+    from pysmt.shortcuts import Implies, TRUE
 
     if not body:
-        body = TRUE()
-    # Clauses must be implications, even when body is TRUE
-    clause = Implies(body, head)
-    return clause
+        return head
+    return Implies(body, head)
 
 
 def Mod(left: FNode, right: FNode) -> FNode:

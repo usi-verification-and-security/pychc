@@ -78,7 +78,8 @@ class CHCSolver(ABC):
         binary_path: Optional[Path] = None,
         smt_validator: Optional[SMTSolver] = None,
         proof_checker: Optional[ProofChecker] = None,
-        name: Optional[str] = None
+        proof_format: Optional[ProofFormat] = None,
+        name: Optional[str] = None,
     ):
         self.system: Optional[CHCSystem] = None
 
@@ -101,6 +102,7 @@ class CHCSolver(ABC):
 
         self.set_smt_validator(smt_validator)
         self.set_proof_checker(proof_checker)
+        self.set_unsat_proof_format(proof_format)
         self._name = name if name else self.NAME
 
     def get_name(self) -> str:
@@ -256,13 +258,17 @@ class CHCSolver(ABC):
                 raise PyCHCException(
                     "No SMT validator set for requested witness validation."
                 )
-            self.system.validate_sat_model(self._witness, self.smt_validator, timeout=timeout)
+            self.system.validate_sat_model(
+                self._witness, self.smt_validator, timeout=timeout
+            )
         elif self._status == Status.UNSAT:
             if not self.proof_checker:
                 raise PyCHCException(
                     "No proof checker set for requested proof validation."
                 )
-            self.system.validate_unsat_proof(self._witness, self.proof_checker, timeout=timeout)
+            self.system.validate_unsat_proof(
+                self._witness, self.proof_checker, timeout=timeout
+            )
         else:
             raise PyCHCException("Cannot validate witness for UNKNOWN status.")
 

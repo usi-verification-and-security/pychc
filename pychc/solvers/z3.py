@@ -122,40 +122,46 @@ class Z3CHCSolver(CHCSolver, SMTSolver):
             cmd_args=["-in"] + self.chc_options.to_array(),
         )
 
-        from pychc.parser import scan_commands_in_smtlib_file
+        logging.debug(f"Running {self.NAME} interactively")
 
         self.set_timeout(timeout)
 
+        self._status = None
+        self._raw_output = None
+
         try:
-            commands = scan_commands_in_smtlib_file(sys_file)
-            for cmd in commands:
+            from pychc.parser import scan_commands_in_smtlib_file
+
+            for cmd in scan_commands_in_smtlib_file(sys_file):
                 if cmd == "(exit)":
                     continue  # we will exit later
                 self._send_raw_command(cmd)
                 if cmd == "(get-model)" or cmd == "(get-proof)":
                     # wait for a possibly multi-line answer
                     self._raw_output = self._get_long_answer()
-                else:
-                    # read a single-line answer
-                    answer = self._get_answer()
-                    if "error" in answer.lower():
-                        raise PyCHCSolverException(
-                            f"{self.NAME} reported an error: {answer}"
-                        )
-                    if answer not in {"success", "exit", "sat", "unsat", "unknown"}:
-                        raise PyCHCSolverException(
-                            f"Unexpected response from {self.NAME}: {answer}"
-                        )
-                    if answer == "sat":
-                        self._status = Status.SAT
-                    elif answer == "unsat":
-                        self._status = Status.UNSAT
-                    elif answer == "unknown":
-                        self._status = Status.UNKNOWN
+                    continue
 
-            if self._status != Status.UNKNOWN and not self._raw_output:
-                # if the file contains a (check-sat) command,
-                # and no (get-model)/(get-proof) command,
+                # read a single-line answer
+                answer = self._get_answer()
+                if "error" in answer.lower():
+                    raise PyCHCSolverException(
+                        f"{self.NAME} reported an error: {answer}"
+                    )
+                if answer not in {"success", "exit", "sat", "unsat", "unknown"}:
+                    raise PyCHCSolverException(
+                        f"Unexpected response from {self.NAME}: {answer}"
+                    )
+                if answer == "sat":
+                    self._status = Status.SAT
+                elif answer == "unsat":
+                    self._status = Status.UNSAT
+                elif answer == "unknown":
+                    self._status = Status.UNKNOWN
+            # all commands in file processed
+
+            if not self._raw_output:
+                # if no (get-model)/(get-proof) command was issued,
+                # but we have a conclusive status,
                 # we request the witness now
                 if self._status == Status.SAT:
                     self._send_raw_command("(get-model)")
