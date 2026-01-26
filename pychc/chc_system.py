@@ -301,7 +301,7 @@ class CHCSystem:
         self.status = Status.UNSAT
         self.witness = witness
 
-    def learn_from_witness(self, witness: Witness) -> set[FNode]:
+    def strengthen_clause_with_witness(self, clause_id : int, witness: SatWitness) -> int:
         """
         Learn new clauses from the given witness.
 
@@ -310,32 +310,37 @@ class CHCSystem:
         from pychc.shortcuts import Clause, Apply
         from pysmt.oracles import get_logic
 
-        if not isinstance(witness, SatWitness):
-            logging.warning("Can only learn from SAT witnesses.")
-            return set()
+        clause = self.clauses[clause_id]
 
-        clauses = set()
-        for pred in self.get_predicates():
-            interpretation = witness.definitions.get(pred.symbol_name(), None)
-            if pred.get_type().is_function_type():
-                predicate = Apply(pred, interpretation.formal_params)
-                property = interpretation.function_body
-            else:
-                predicate = pred
-                property = interpretation
+        if not clause.is_forall() or not clause.arg(0).is_implies():
+            logging.info("Can only strengthen quantified implication clauses.")
+            return
+    
+        # prepare maps for interpreting a formula
+        interpretations = {
+            p: witness.definitions[p.symbol_name()]
+            for p in self.get_predicates()
+            if p.get_type().is_function_type()
+        }
+        substitutions = {
+            p: witness.definitions[p.symbol_name()]
+            for p in self.get_predicates()
+            if not p.get_type().is_function_type()
+        }
 
-            body = And(predicate, Not(property))
-            if not get_logic(body) <= self.logic:
-                logging.warning(
-                    f"Learned clause body {body} logic not compatible with system logic."
-                )
-                # TODO: Could try to remove quantifiers here.
-                continue
-            clauses.add(Clause(body=body, head=FALSE()))
-
-        for clause in clauses:
-            self.add_clause(clause)
-        return clauses
+        
+        body, head = clause.arg(0).args()
+        interpreted_body = body.substitute(
+            subs=substitutions, interpretations=interpretations
+        )
+        interpreted_head = head.substitute(
+            subs=substitutions, interpretations=interpretations
+        )
+        new_body = And(body, interpreted_body, interpreted_head)
+        new_clause_id = self.add_clause(
+            Clause(body=new_body, head=head)
+        )
+        return new_clause_id
 
     def get_smt2file(self) -> Path:
         if self.smt2file is None or not self.smt2file.exists():
