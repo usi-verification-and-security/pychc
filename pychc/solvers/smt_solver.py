@@ -260,11 +260,11 @@ class SMTSolver(SmtLibSolver):
         # Read all currently available output:
         # Block until the first data chunk arrives (or max timeout elapses)
         # After first data, switch to idle-timeout mode to detect completion
-        # Enforce a hard max timeout of 10s for the entire read
+        # Enforce a hard max timeout of 20s for the entire read
         buf: list[str] = []
         err_str: list[str] = []
         start = time()
-        idle_timeout = 1  # seconds to wait for more data after first chunk
+        idle_timeout = 0.2  # seconds to wait for more data after first chunk
         max_timeout = 20.0  # hard cap for overall read
 
         fd = self.solver.stdout  # raw buffered reader from Popen
@@ -278,7 +278,7 @@ class SMTSolver(SmtLibSolver):
 
             # Before first chunk: wait up to remaining time (blocking)
             # After first chunk: wait only idle_timeout (bounded by remaining)
-            wait = remaining if parenthesis == 0 else min(idle_timeout, remaining)
+            wait = remaining if parenthesis != 0 else min(idle_timeout, remaining)
             rlist, _, _ = select([fd, fe], [], [], wait)
             if rlist:
                 if fe in rlist:
