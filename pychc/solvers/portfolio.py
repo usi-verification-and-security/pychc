@@ -93,6 +93,9 @@ def solve_pool(
     or None if all return UNKNOWN or timeout.
     """
 
+    # First, reset all solvers internal _system
+    for solver in solvers: solver.load_system(None)
+
     args = ((id, solver, sys, timeout) for id, solver in enumerate(solvers))
     solver = _run_pool(solve_task, args, solvers)
     if solver:
