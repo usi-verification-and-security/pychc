@@ -105,7 +105,7 @@ def test_golem_1_issue():
     validator = CVC5Solver(proof_checker=Carcara())
 
     # Issue from Golem 0.4.0
-    old_golem = GolemSolver(binary_path=old_bin_path)
+    old_golem = GolemSolver(binary_path=old_bin_path / "golem-0.4.0")
     with pytest.raises(PyCHCSolverException):
         old_golem.run(test)
 
@@ -124,7 +124,7 @@ def test_golem_2_issue():
     validator = CVC5Solver(proof_checker=Carcara())
 
     # Issue from Golem 0.4.0
-    old_golem = GolemSolver(binary_path=old_bin_path)
+    old_golem = GolemSolver(binary_path=old_bin_path / "golem-0.4.0")
     old_golem.run(test)
     with pytest.raises(PyCHCSolverException):
         sys.validate_sat_model(old_golem.get_witness(), validator)
@@ -145,7 +145,9 @@ def test_opensmt_issue():
     test = bench_dir / "opensmt.smt2"
 
     # Issue from OpenSMT 2.5.0
-    old_opensmt = OpenSMTSolver(binary_path=old_bin_path)
+    old_opensmt = OpenSMTSolver(
+        binary_path=old_bin_path / "opensmt-2.5.0"
+    )
     with pytest.raises(PyCHCSolverException):
         old_opensmt.run(test)
 
@@ -166,7 +168,7 @@ def test_cvc5_1_issue():
 
     # Issue from CVC5 1.0.5
     old_cvc5 = CVC5Solver(
-        binary_path=old_bin_path, solver_options={"debug_interaction": True}
+        binary_path=old_bin_path / "cvc5-1.0.5" / "bin"
     )
     with pytest.raises(PyCHCSolverException):
         old_cvc5.run(test)
