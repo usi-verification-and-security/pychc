@@ -2,11 +2,10 @@ from pathlib import Path
 import time
 
 from pychc.chc_system import CHCSystem
-
 from pychc.solvers.cvc5 import CVC5Solver
 from pychc.solvers.z3 import Z3CHCSolver
 from pychc.solvers.eldarica import EldaricaSolver
-from pychc.solvers.golem import GolemSolver
+from pychc.solvers.golem import GolemEngines, GolemSolver
 from pychc.solvers.carcara import Carcara
 from pychc.solvers.chc_solver import CHCSolver
 from pychc.solvers.witness import ProofFormat, Status
@@ -48,13 +47,20 @@ goal_id = sys.add_clause(goal)
 # Create a pool of solvers
 spacer_gg = Z3CHCSolver(global_guidance=True, name="Z3+GG")
 spacer = Z3CHCSolver(global_guidance=False, name="Z3")
-golem = GolemSolver(proof_format=ProofFormat.ALETHE)
+golem_kind = GolemSolver(proof_format=ProofFormat.ALETHE, name="golem-Kind", engine=GolemEngines.kind)
+golem_tpa = GolemSolver(proof_format=ProofFormat.ALETHE, name="golem-TPA", engine=GolemEngines.tpa)
 eldarica = EldaricaSolver(name="eldarica")
 
 # Let's try to solve the system with all solvers in parallel.
-# Since the invariant needs to reason on parity, Z3+GG should be the first to solve it,
 start = time.time()
-solver: CHCSolver = solve_pool([spacer_gg, spacer, golem, eldarica], sys, timeout=30)
+solver: CHCSolver = solve_pool([spacer, golem_tpa, golem_kind, eldarica], sys, timeout=30)
+assert solver is None
+print("No solver could solve the system within the timeout")
+
+# Since the invariant needs to reason on parity, Z3+GG should be able to solve it.
+# Let's try again with Z3+GG included in the pool.
+start = time.time()
+solver: CHCSolver = solve_pool([spacer_gg, spacer, golem_tpa, golem_kind, eldarica], sys, timeout=30)
 print(f"Solver {solver.get_name()} solved first. Time taken: {time.time() - start}")
 assert solver.get_status() == Status.SAT
 
@@ -72,13 +78,13 @@ print(sys.get_clauses()[new_trans_id].serialize())
 
 # Let's see if the other solvers can solve the strengthened system now.
 start = time.time()
-solver: CHCSolver = solve_pool([spacer, golem, eldarica], sys, timeout=30)
+solver: CHCSolver = solve_pool([spacer, golem_tpa, golem_kind, eldarica], sys, timeout=30)
 print(
     f"Solver {solver.get_name()} solved first on strengthened system. Time taken: {time.time() - start}"
 )
 assert solver.get_status() == Status.SAT
 
-# On the strengthened system, solving time should be faster,
+# On the strengthened system, solving time was faster,
 # but let's make sure that the found model is valid for the original system
 sys.remove_clause(new_trans_id)
 sys.validate_sat_model(solver.get_witness(), CVC5Solver(), timeout=30)
@@ -104,11 +110,11 @@ sys.serialize(file)
 # Run the solvers on the same smt2 file.
 # Since the cex is long, Golem should be the first to solve it
 start = time.time()
-solver: CHCSolver = run_pool([spacer_gg, spacer, golem, eldarica], file, timeout=30)
+solver: CHCSolver = run_pool([spacer_gg, spacer, golem_tpa, golem_kind, eldarica], file, timeout=30)
 print(
     f"Solver {solver.get_name()} solved first on UNSAT system. Time taken: {time.time() - start}"
 )
-if solver.get_name() == "golem":
+if "golem" in solver.get_name():
     # We can validate with Carcara directly on the input file.
     Carcara().validate_witness(solver.get_witness(), smt2file=file, timeout=30)
     print("The UNSAT witness is valid!")
