@@ -41,7 +41,7 @@ install_cvc5() {
     export NEW_PATH="$NEW_PATH:$DIR/$dir/bin"
 }
 
-install_cvc5_old() {
+install_cvc5_1.0.5() {
     local ver="1.0.5"
     local name="cvc5-Linux-Static"
     local file="${name}.zip"
@@ -67,7 +67,7 @@ install_opensmt() {
     export NEW_PATH="$NEW_PATH:$DIR/$dir"
 }
 
-install_opensmt_old() {
+install_opensmt_2.5.0() {
     local ver="2.5.0"
     local file="opensmt-${ver}-x64-linux.tar.bz2"
     local dir="opensmt-${ver}"
@@ -81,6 +81,27 @@ install_opensmt_old() {
 }
 
 install_golem() {
+    local commit="50f3b1a"
+    local dir="golem-${commit}"
+    echo "Cloning Golem repository..."
+    if [ ! -d "$DIR/$dir/.git" ]; then
+        git clone https://github.com/usi-verification-and-security/golem.git "$DIR/$dir"
+    else
+        echo "Golem already present at $DIR/$dir"
+    fi
+    local prev_dir="$(pwd)"
+    cd "$DIR/$dir"
+    git checkout "$commit"
+    mkdir -p build
+    cd build
+    echo "Building Golem..."
+    cmake ..
+    make -j4
+    cd "$prev_dir"
+    export NEW_PATH="$NEW_PATH:$DIR/$dir/build"
+}
+
+install_golem_release() {
     local ver="${1:-0.9.0}"
     local file="golem-x64-linux.tar.bz2"
     local dir="golem-${ver}"
@@ -93,7 +114,7 @@ install_golem() {
     export NEW_PATH="$NEW_PATH:$DIR/$dir"
 }
 
-install_golem_old() {
+install_golem_0.4.0() {
     local ver="0.4.0"
     local file="golem_${ver}-x64-linux.tar.bz2"
     local dir="golem-${ver}"
@@ -124,9 +145,10 @@ install_carcara() {
 
 # if OLD_RELEASES is true, install older versions
 if [ "$OLD_RELEASES" = true ]; then
-    install_cvc5_old
-    install_opensmt_old
-    install_golem_old
+    install_cvc5_1.0.5
+    install_opensmt_2.5.0
+    install_golem_0.4.0
+    install_golem_release "0.9.0"
     install_eldarica "2.0.9"
     exit 0
 fi
