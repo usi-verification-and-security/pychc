@@ -47,20 +47,28 @@ goal_id = sys.add_clause(goal)
 # Create a pool of solvers
 spacer_gg = Z3CHCSolver(global_guidance=True, name="Z3+GG")
 spacer = Z3CHCSolver(global_guidance=False, name="Z3")
-golem_kind = GolemSolver(proof_format=ProofFormat.ALETHE, name="golem-Kind", engine=GolemEngines.kind)
-golem_tpa = GolemSolver(proof_format=ProofFormat.ALETHE, name="golem-TPA", engine=GolemEngines.tpa)
+golem_kind = GolemSolver(
+    proof_format=ProofFormat.ALETHE, name="golem-Kind", engine=GolemEngines.kind
+)
+golem_tpa = GolemSolver(
+    proof_format=ProofFormat.ALETHE, name="golem-TPA", engine=GolemEngines.tpa
+)
 eldarica = EldaricaSolver(name="eldarica")
 
 # Let's try to solve the system with all solvers in parallel.
 start = time.time()
-solver: CHCSolver = solve_pool([spacer, golem_tpa, golem_kind, eldarica], sys, timeout=30)
+solver: CHCSolver = solve_pool(
+    [spacer, golem_tpa, golem_kind, eldarica], sys, timeout=30
+)
 assert solver is None
 print("No solver could solve the system within the timeout")
 
 # Since the invariant needs to reason on parity, Z3+GG should be able to solve it.
 # Let's try again with Z3+GG included in the pool.
 start = time.time()
-solver: CHCSolver = solve_pool([spacer_gg, spacer, golem_tpa, golem_kind, eldarica], sys, timeout=30)
+solver: CHCSolver = solve_pool(
+    [spacer_gg, spacer, golem_tpa, golem_kind, eldarica], sys, timeout=30
+)
 print(f"Solver {solver.get_name()} solved first. Time taken: {time.time() - start}")
 assert solver.get_status() == Status.SAT
 
@@ -78,7 +86,9 @@ print(sys.get_clauses()[new_trans_id].serialize())
 
 # Let's see if the other solvers can solve the strengthened system now.
 start = time.time()
-solver: CHCSolver = solve_pool([spacer, golem_tpa, golem_kind, eldarica], sys, timeout=30)
+solver: CHCSolver = solve_pool(
+    [spacer, golem_tpa, golem_kind, eldarica], sys, timeout=30
+)
 print(
     f"Solver {solver.get_name()} solved first on strengthened system. Time taken: {time.time() - start}"
 )
@@ -110,7 +120,9 @@ sys.serialize(file)
 # Run the solvers on the same smt2 file.
 # Since the cex is long, Golem should be the first to solve it
 start = time.time()
-solver: CHCSolver = run_pool([spacer_gg, spacer, golem_tpa, golem_kind, eldarica], file, timeout=30)
+solver: CHCSolver = run_pool(
+    [spacer_gg, spacer, golem_tpa, golem_kind, eldarica], file, timeout=30
+)
 print(
     f"Solver {solver.get_name()} solved first on UNSAT system. Time taken: {time.time() - start}"
 )
