@@ -1,3 +1,18 @@
+#
+# Copyright 2026 Anna Becchi
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 import pytest
 
 from pathlib import Path
@@ -29,7 +44,7 @@ def test_z3_1_issue():
     spacer = Z3CHCSolver()
     spacer.run(test)
 
-    sys = CHCSystem.load_from_smtlib(Path(test))
+    sys = CHCSystem.load_from_file(Path(test))
     with pytest.raises(PyCHCInvalidResultException):
         sys.validate_sat_model(spacer.get_witness(), CVC5Solver())
 
@@ -40,7 +55,7 @@ def test_z3_1_model_issue():
 
     test = bench_dir / "chc-LIA-Lin_325.smt2"
     model = bench_dir / "model_z3_1.smt2"
-    sys = CHCSystem.load_from_smtlib(Path(test))
+    sys = CHCSystem.load_from_file(Path(test))
     model = SatWitness.load_from_file(Path(model))
     with pytest.raises(PyCHCInvalidResultException):
         sys.validate_sat_model(model, CVC5Solver())
@@ -54,7 +69,7 @@ def test_z3_2_issue():
     spacer = Z3CHCSolver()
     spacer.run(test)
 
-    sys = CHCSystem.load_from_smtlib(Path(test))
+    sys = CHCSystem.load_from_file(Path(test))
     with pytest.raises(PyCHCInvalidResultException):
         sys.validate_sat_model(spacer.get_witness(), CVC5Solver())
 
@@ -67,7 +82,7 @@ def test_eldarica_issue():
     # https://github.com/uuverifiers/eldarica/issues/51
 
     test = bench_dir / "eldarica.smt2"
-    sys = CHCSystem.load_from_smtlib(Path(test))
+    sys = CHCSystem.load_from_file(Path(test))
     validator = CVC5Solver(proof_checker=Carcara())
 
     # Issue from Eldarica 2.0.9
@@ -117,7 +132,7 @@ def test_golem_1_issue():
     # https://github.com/usi-verification-and-security/golem/issues/29
 
     test = bench_dir / "chc-LIA-Lin_110.smt2"
-    sys = CHCSystem.load_from_smtlib(Path(test))
+    sys = CHCSystem.load_from_file(Path(test))
     validator = CVC5Solver(proof_checker=Carcara())
 
     # Issue from Golem 0.4.0
@@ -136,7 +151,7 @@ def test_golem_2_issue():
     # https://github.com/usi-verification-and-security/golem/issues/27
 
     test = bench_dir / "chc-LIA-Lin_314.smt2"
-    sys = CHCSystem.load_from_smtlib(Path(test))
+    sys = CHCSystem.load_from_file(Path(test))
     validator = CVC5Solver(proof_checker=Carcara())
 
     # Issue from Golem 0.4.0

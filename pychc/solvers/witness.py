@@ -1,8 +1,23 @@
+#
+# Copyright 2026 Anna Becchi
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 from __future__ import annotations
 
 import logging
 
-from abc import ABC
+from abc import ABC, abstractmethod
 from enum import Enum
 from pathlib import Path
 
@@ -21,7 +36,15 @@ class ProofFormat(str, Enum):
 class Witness(ABC):
     """Abstract witness produced by a solver."""
 
-    pass
+    @abstractmethod
+    def serialize(self, path: Path) -> None:
+        """Serialize the witness to a file."""
+        pass
+    
+    @abstractmethod
+    def serialize_to_string(self) -> str:
+        """Serialize the witness to a string."""
+        pass
 
 
 class SatWitness(Witness):
@@ -72,24 +95,35 @@ class SatWitness(Witness):
 
     def serialize(self, path: Path) -> None:
         """Serialize the SAT witness to a file."""
+        with open(path, "w") as fout:
+            self._serialize_to_stream(fout)
+        
+    def serialize_to_string(self) -> str:
+        from io import StringIO
+
+        with StringIO() as fout:
+            self._serialize_to_stream(fout)
+            return fout.getvalue()
+    
+    def _serialize_to_stream(self, fout) -> None:
+        """Serialize the SAT witness to a file."""
         from pysmt.utils import quote
         from pysmt.typing import BOOL
         from pysmt.smtlib.printers import SmtPrinter
 
         booltype = BOOL.as_smtlib(funstyle=False)
 
-        with open(path, "w") as fout:
-            printer = SmtPrinter(fout)
-            for name, interpretation in self.definitions.items():
-                # Similar to SmtCommand.serialize, but taking care of quoting parameter's names
-                name = quote(name)
-                params = " ".join(
-                    f"({quote(v.symbol_name())} {v.symbol_type().as_smtlib(funstyle=False)})"
-                    for v in interpretation.formal_params
-                )
-                fout.write(f"(define-fun {name} ({params}) {booltype} ")
-                printer.printer(interpretation.function_body)
-                fout.write(")")
+        printer = SmtPrinter(fout)
+        for name, interpretation in self.definitions.items():
+            # Similar to SmtCommand.serialize, but taking care of quoting parameter's names
+            name = quote(name)
+            params = " ".join(
+                f"({quote(v.symbol_name())} {v.symbol_type().as_smtlib(funstyle=False)})"
+                for v in interpretation.formal_params
+            )
+            fout.write(f"(define-fun {name} ({params}) {booltype} ")
+            printer.printer(interpretation.function_body)
+            fout.write(")")
 
 
 class UnsatWitness(Witness):
@@ -112,6 +146,10 @@ class UnsatWitness(Witness):
         """Serialize the UNSAT witness to a file."""
         with open(path, "w") as f:
             f.write(self.text)
+        
+    def serialize_to_string(self) -> str:
+        """Serialize the UNSAT witness to a string."""
+        return self.text
 
 
 class Status(str, Enum):

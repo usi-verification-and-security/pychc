@@ -1,5 +1,21 @@
+#
+# Copyright 2026 Anna Becchi
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 from __future__ import annotations
 
+import logging
 from subprocess import TimeoutExpired
 import tempfile
 
@@ -26,11 +42,8 @@ from pychc.exceptions import (
 
 class SMTSolverOptions(SmtLibOptions):
     """
-    Options for SMTSolver extending pySMT's SmtLibOptions with proof support.
-
-    Adds:
-    - produce_proofs: when True sets `:produce-proofs` to `true`.
-    - Additional `solver_options` passed through as standard SMT-LIB `set-option`.
+    Options for SMTSolver extending PySMT's SmtLibOptions
+    with proof support and `run` method.
     """
 
     PROOF_FORMATS: set[ProofFormat] = set()
@@ -133,6 +146,8 @@ class SMTSolver(SmtLibSolver):
             LOGICS=self.LOGICS,
             **self._extra_options,
         )
+        logging.debug(f"Running {self.NAME}: " + " ".join(self.cmd_line))
+
         # restore logic to None  if it was not provided
         if self._do_not_set_logic:
             self.logic = None

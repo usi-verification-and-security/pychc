@@ -1,3 +1,18 @@
+#
+# Copyright 2026 Anna Becchi
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 from __future__ import annotations
 
 import itertools
@@ -33,7 +48,7 @@ class CHCSystem:
         self.witness = None
 
     @classmethod
-    def load_from_smtlib(cls, path: Path, logic: Optional[Logic] = None) -> CHCSystem:
+    def load_from_file(cls, path: Path, logic: Optional[Logic] = None) -> CHCSystem:
         """Load a CHC system from an SMT-LIB file."""
         from pychc.parser import CHCSmtLibParser
         from pysmt.oracles import get_logic
@@ -238,7 +253,7 @@ class CHCSystem:
                 subs=substitutions, interpretations=interpretations
             )
 
-        return set(map(_substitute_clause, self.get_clauses()))
+        return list(map(_substitute_clause, self.get_clauses()))
 
     def validate_sat_model(
         self,
@@ -259,7 +274,7 @@ class CHCSystem:
 
         smt_validator.set_timeout(timeout)
 
-        for query in queries:
+        for i, query in enumerate(queries):
             query_logic = get_logic(query)
             known_logic = query_logic <= smt_validator.get_logic()
             if not known_logic and query_logic.is_quantified():
@@ -278,8 +293,10 @@ class CHCSystem:
                     )
 
             if not smt_validator.is_valid(query):
+                logging.error(f"Falsified clause: {self.get_clauses()[i].serialize(threshold=6)}")
+                logging.error(f"Interpreted clause is not valid: {query.serialize(threshold=6)}")
                 raise PyCHCInvalidResultException(
-                    f"Solver {smt_validator.NAME} produced an invalid model for the system. See satisfiable query: {smt_validator.get_smt2_file()}"
+                    f"Invalid CHC model. Clause {i} is falsified. See satisfiable query: {smt_validator.get_smt2_file()}"
                 )
             if smt_validator.proof_checker:
                 smt_validator.validate_proof()
@@ -301,7 +318,9 @@ class CHCSystem:
         self.status = Status.UNSAT
         self.witness = witness
 
-    def strengthen_clause_with_witness(self, clause_id : int, witness: SatWitness) -> int:
+    def strengthen_clause_with_witness(
+        self, clause_id: int, witness: SatWitness
+    ) -> int:
         """
         Learn new clauses from the given witness.
 
@@ -315,7 +334,7 @@ class CHCSystem:
         if not clause.is_forall() or not clause.arg(0).is_implies():
             logging.info("Can only strengthen quantified implication clauses.")
             return
-    
+
         # prepare maps for interpreting a formula
         interpretations = {
             p: witness.definitions[p.symbol_name()]
@@ -328,7 +347,6 @@ class CHCSystem:
             if not p.get_type().is_function_type()
         }
 
-        
         body, head = clause.arg(0).args()
         interpreted_body = body.substitute(
             subs=substitutions, interpretations=interpretations
@@ -337,9 +355,7 @@ class CHCSystem:
             subs=substitutions, interpretations=interpretations
         )
         new_body = And(body, interpreted_body, interpreted_head)
-        new_clause_id = self.add_clause(
-            Clause(body=new_body, head=head)
-        )
+        new_clause_id = self.add_clause(Clause(body=new_body, head=head))
         return new_clause_id
 
     def get_smt2file(self) -> Path:

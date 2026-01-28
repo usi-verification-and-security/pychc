@@ -1,3 +1,18 @@
+#
+# Copyright 2026 Anna Becchi
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 from __future__ import annotations
 
 import logging
@@ -102,7 +117,10 @@ class CHCSolver(ABC):
 
         self.set_smt_validator(smt_validator)
         self.set_proof_checker(proof_checker)
-        self.set_unsat_proof_format(proof_format)
+        if proof_format:
+            # If both proof checker and proof format are provided, 
+            # proof_format overrides the proof checker's format.
+            self.set_unsat_proof_format(proof_format)
         self._name = name if name else self.NAME
 
     def get_name(self) -> str:
@@ -211,6 +229,7 @@ class CHCSolver(ABC):
 
         # Understand if SAT/UNSAT/UNKNOWN
         # this sets self._status and self._raw_output
+        self._witness = None
         self._status, self._raw_output = decide_result(raw_output)
 
         if self._status != Status.UNKNOWN and validate:
