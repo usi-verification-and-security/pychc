@@ -122,7 +122,7 @@ class Z3CHCSolver(CHCSolver, SMTSolver):
             cmd_args=["-in"] + self.chc_options.to_array(),
         )
 
-        logging.debug(f"Running {self.NAME} interactively")
+        logging.debug(f"Running {self.NAME}: " + " ".join(self.cmd_line))
 
         self.set_timeout(timeout)
 
