@@ -10,7 +10,7 @@ from pychc.solvers.eldarica import EldaricaSolver
 from pychc.solvers.z3 import Z3CHCSolver
 from pychc.solvers.cvc5 import CVC5Solver
 from pychc.solvers.carcara import Carcara
-from pychc.solvers.witness import SatWitness
+from pychc.solvers.witness import ProofFormat, SatWitness
 
 from pychc.tests.common import reset_pysmt_env
 
@@ -86,14 +86,30 @@ def test_eldarica_issue():
 
 
 @reset_pysmt_env
-def test_golem_0_issue():
+def test_golem_proof_production_issue():
     # https://github.com/usi-verification-and-security/golem/issues/161
 
-    test = bench_dir / "golem.smt2"
+    test = bench_dir / "golem_proof_imply.smt2"
     golem = GolemSolver()
     golem.run(test)
     with pytest.raises(PyCHCInvalidResultException):
         Carcara().validate_witness(golem.get_witness(), smt2file=test)
+
+
+@reset_pysmt_env
+def test_golem_seg_fault_issue():
+    # Fixed in https://github.com/usi-verification-and-security/golem/commit/50f3b1a
+    # This test fails if Golem is installed from release 0.9.0
+
+    test = bench_dir / "golem_fact.smt2"
+    old_golem = GolemSolver(
+        binary_path=old_bin_path / "golem-0.9.0", proof_format=ProofFormat.ALETHE
+    )
+    with pytest.raises(PyCHCSolverException):
+        old_golem.run(test)
+
+    golem = GolemSolver(proof_format=ProofFormat.ALETHE)
+    golem.run(test)
 
 
 @reset_pysmt_env
@@ -145,9 +161,7 @@ def test_opensmt_issue():
     test = bench_dir / "opensmt.smt2"
 
     # Issue from OpenSMT 2.5.0
-    old_opensmt = OpenSMTSolver(
-        binary_path=old_bin_path / "opensmt-2.5.0"
-    )
+    old_opensmt = OpenSMTSolver(binary_path=old_bin_path / "opensmt-2.5.0")
     with pytest.raises(PyCHCSolverException):
         old_opensmt.run(test)
 
@@ -167,9 +181,7 @@ def test_cvc5_1_issue():
     test = bench_dir / "cvc5_simple.smt2"
 
     # Issue from CVC5 1.0.5
-    old_cvc5 = CVC5Solver(
-        binary_path=old_bin_path / "cvc5-1.0.5" / "bin"
-    )
+    old_cvc5 = CVC5Solver(binary_path=old_bin_path / "cvc5-1.0.5" / "bin")
     with pytest.raises(PyCHCSolverException):
         old_cvc5.run(test)
 
