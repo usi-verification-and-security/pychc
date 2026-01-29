@@ -230,6 +230,8 @@ class SMTSolver(SmtLibSolver):
         """
         self._send_command_get_proof()
         self._proof = self._get_long_answer()
+        if not self._proof:
+            raise PyCHCSolverException(f"{self.NAME} did not return a proof")
         return self._proof
 
     def delete_files(self) -> None:
@@ -267,7 +269,7 @@ class SMTSolver(SmtLibSolver):
         ok = self.proof_checker.validate(self.proof_file, self.smt2file)
         if not ok:
             raise PyCHCInvalidResultException(
-                f"SMT solver {SMTSolver.NAME} produced an invalid proof. See proof file: {self.get_proof_file()} for query {self.get_smt2_file()}"
+                f"SMT solver {SMTSolver.NAME} produced an invalid proof. See proof file: {self.proof_file} for query {self.smt2file}"
             )
         self.delete_files()
 
@@ -275,16 +277,17 @@ class SMTSolver(SmtLibSolver):
         # Read all currently available output:
         # Block until the first data chunk arrives (or max timeout elapses)
         # After first data, switch to idle-timeout mode to detect completion
-        # Enforce a hard max timeout of 20s for the entire read
+        # Enforce a hard max timeout of 60s for the entire read
         buf: list[str] = []
         err_str: list[str] = []
         start = time()
-        idle_timeout = 0.2  # seconds to wait for more data after first chunk
-        max_timeout = 20.0  # hard cap for overall read
+        idle_timeout = 1  # seconds to wait for more data after first chunk
+        max_timeout = 60.0  # hard cap for overall read
 
         fd = self.solver.stdout  # raw buffered reader from Popen
         fe = self.solver.stderr  # raw buffered reader from Popen
         parenthesis = 0
+        first_chunk = False
 
         while True:
             remaining = max_timeout - (time() - start)
@@ -293,7 +296,9 @@ class SMTSolver(SmtLibSolver):
 
             # Before first chunk: wait up to remaining time (blocking)
             # After first chunk: wait only idle_timeout (bounded by remaining)
-            wait = remaining if parenthesis != 0 else min(idle_timeout, remaining)
+            # If parenthesis are unbalanced, keep waiting
+            maybe_done = first_chunk and parenthesis == 0
+            wait = remaining if not maybe_done else min(idle_timeout, remaining)
             rlist, _, _ = select([fd, fe], [], [], wait)
             if rlist:
                 if fe in rlist:
@@ -309,14 +314,12 @@ class SMTSolver(SmtLibSolver):
                     chunk_str = chunk.decode("utf-8", errors="replace")
                     buf.append(chunk_str)
                     parenthesis += chunk_str.count("(") - chunk_str.count(")")
+                    first_chunk = True
                 continue
             else:
                 # No data arrived within the wait window
                 if parenthesis == 0:
-                    # Consider stream idle -> done
                     break
-                # Otherwise, keep waiting until max_timeout expires
-                continue
         if err_str:
             raise PyCHCSolverException(
                 f"{self.NAME} reported an error: {''.join(err_str)}"
