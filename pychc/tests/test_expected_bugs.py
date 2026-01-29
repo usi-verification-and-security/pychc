@@ -188,6 +188,65 @@ def test_opensmt_issue():
 
 ### CVC5
 
+@reset_pysmt_env
+def test_cvc5_proof_0_issue():
+
+    test = bench_dir / "cvc5_simple_resolution.smt2"
+
+    cvc5 = CVC5Solver(proof_checker=Carcara())
+    cvc5.run(test)
+    with pytest.raises(PyCHCInvalidResultException):
+        cvc5.validate_proof()
+
+@reset_pysmt_env
+def test_cvc5_proof_diseq_issue_1():
+
+    test = bench_dir / "cvc5_simple_diseq_1.smt2"
+
+    cvc5 = CVC5Solver(proof_checker=Carcara())
+    cvc5.run(test)
+    with pytest.raises(PyCHCInvalidResultException):
+        cvc5.validate_proof()
+
+@reset_pysmt_env
+def test_cvc5_proof_diseq_issue_2():
+
+    test = bench_dir / "cvc5_simple_diseq_2.smt2"
+
+    cvc5 = CVC5Solver(proof_checker=Carcara())
+    cvc5.run(test)
+    with pytest.raises(PyCHCInvalidResultException):
+        cvc5.validate_proof()
+
+@reset_pysmt_env
+def test_cvc5_proof_diseq_issue_3():
+
+    test = bench_dir / "cvc5_simple_diseq_3.smt2"
+
+    cvc5 = CVC5Solver(proof_checker=Carcara())
+    cvc5.run(test)
+    with pytest.raises(PyCHCInvalidResultException):
+        cvc5.validate_proof()
+
+@reset_pysmt_env
+def test_cvc5_proof_diseq_issue_4():
+
+    test = bench_dir / "cvc5_simple_diseq_4.smt2"
+
+    cvc5 = CVC5Solver(proof_checker=Carcara())
+    cvc5.run(test)
+    with pytest.raises(PyCHCInvalidResultException):
+        cvc5.validate_proof()
+
+@reset_pysmt_env
+def test_cvc5_proof_diseq_issue_5():
+
+    test = bench_dir / "cvc5_simple_diseq_5.smt2"
+
+    cvc5 = CVC5Solver(proof_checker=Carcara())
+    cvc5.run(test)
+    with pytest.raises(PyCHCInvalidResultException):
+        cvc5.validate_proof()
 
 @reset_pysmt_env
 def test_cvc5_1_issue():
@@ -205,3 +264,4 @@ def test_cvc5_1_issue():
     cvc5.run(test)
     assert not cvc5.solve()
     cvc5.validate_proof()
+
