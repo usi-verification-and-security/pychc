@@ -251,8 +251,8 @@ class CHCSolver(ABC):
                 self._witness = SatWitness.load_from_text(self._raw_output)
             except Exception as e:
                 raise PyCHCSolverException(
-                    "Failed to parse SAT witness from solver output."
-                ) from e
+                    f"Failed to parse SAT witness from solver output. {e}"
+                )
             if self.system and not self.system.check_witness_consistency(self._witness):
                 raise PyCHCInvalidResultException(
                     "Extracted model is not consistent with the CHC system predicates."

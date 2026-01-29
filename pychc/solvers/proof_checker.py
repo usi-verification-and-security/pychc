@@ -131,6 +131,7 @@ class ProofChecker(ABC):
         except CalledProcessError as err:
             self._raw_output = (err.stdout or "") + (err.stderr or "")
             logging.error(f"{self.NAME} execution failed: {self._raw_output}")
+            logging.error(f"Command: {' '.join(args)}")
             return False
         except TimeoutExpired:
             logging.error(f"{self.NAME} execution timed out after {timeout} seconds")
