@@ -32,7 +32,7 @@ with ATHENA. Formal Aspects of Computing (FAC) 2025 https://doi.org/10.1145/3716
 A new CHC system can be created programmatically using APIs such as 
 `Predicate`, `Clause` and `Apply`, together with
 the SMT formulae manipulation shortcuts provided by PySMT.
-```
+```python
 sys = CHCSystem(logic=QF_UFLIA)    # Create a CHC system 
 inv = Predicate("inv", [INT])      # Declare a predicate inv(x: Int)
 sys.add_predicate(inv)             # Add predicate to the system
@@ -57,7 +57,7 @@ for validating the produced results.
 Also SMT solvers can be accompanied with a proof-checker
 validating their unsatisfiability results.
 
-```
+```python
 # Create an instance of CVC5 SMT solver whose proofs are checked with Carcara
 cvc5 = CVC5Solver(proof_checker=Carcara(), proof_format=ALETHE)
 # Create an instance of the Golem CHC solver
@@ -86,7 +86,7 @@ Other examples are provided in directory `examples`.
 - <a href="https://github.com/usi-verification-and-security/pychc/blob/master/examples/sat_check.py">sat_check.py</a> shows how to certify a satisfiable CHC problem 
 - <a href="https://github.com/usi-verification-and-security/pychc/blob/master/examples/sat_check_invalid.py">sat_check_invalid.py</a> shows how Z3Spacer might return an invalid model, and how to compare the models produced by different solvers
 - <a href="https://github.com/usi-verification-and-security/pychc/blob/master/examples/unsat_check.py">unsat_check.py</a> shows how to certify the unsatisfiability proof produced by Golem
-- <a href="https://github.com/usi-verification-and-security/pychc/blob/master/examples/cooperative_example.py">cooperative_example.py</a> shows how to run several CHC solvers in parallel in a portfolio approach and experiment with invariant sharing
+- <a href="https://github.com/usi-verification-and-security/pychc/blob/master/examples/cooperation.py">cooperation.py</a> shows how to run several CHC solvers in parallel in a portfolio approach and experiment with invariant sharing
 - <a href="https://github.com/usi-verification-and-security/pychc/blob/master/examples/k-liveness.py">k-liveness.py</a> shows how to prototype the k-liveness and liveness2safety algorithms
 
 ## Installation
@@ -97,8 +97,8 @@ PyCHC only dependency is the library PySMT.
 
 Install `pySMT` module and `z3` quantifier elimination strategy via `pysmt`.
 ```
-pip install -r requirements.txt
-python -m pysmt install --z3 --confirm-agreement
+$ pip install -r requirements.txt
+$ python -m pysmt install --z3 --confirm-agreement
 ```
 (Note: this installation of `z3` is used uniquely for removing
 quantifiers from CHC satisfiability witnesses, when the chosen SMT validator
@@ -118,8 +118,8 @@ the versions used for development and testing:
 
 **For x86_64 Linux platforms**, the following does this for you.
 ```
-./scripts/install_solvers.sh
-source env.sh
+$ ./scripts/install_solvers.sh
+$ source env.sh
 ```
 This script creates a directory `binaries` where the needed releases are downloaded and extracted. Compiling from source is required for <a href="https://github.com/usi-verification-and-security/golem">Golem</a> and <a href="https://github.com/ufmg-smite/carcara">Carcara</a> (see their respective repositories for additional requirements).
 
@@ -143,13 +143,13 @@ And move the binaries to `pychc/tests/expected_bugs/old_binaries/`.
 
 **For x86_64 Linux platforms** the following does this for you.
 ```
-./scripts/install_solvers.sh pychc/tests/expected_bugs/old_binaries/ --old-releases
+$ ./scripts/install_solvers.sh pychc/tests/expected_bugs/old_binaries/ --old-releases
 ```
 
 ### Running all tests
 After having installed the old versions, all tests can be run with:
 ```
-python -m pytest pychc/tests
+$ python -m pytest pychc/tests
 ```
 
 
