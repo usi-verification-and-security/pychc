@@ -117,11 +117,18 @@ class SatWitness(Witness):
         for name, interpretation in self.definitions.items():
             # Similar to SmtCommand.serialize, but taking care of quoting parameter's names
             name = quote(name)
+
+            if not isinstance(interpretation, FunctionInterpretation):
+                fout.write(f"\n(define-fun {name} () {booltype} ")
+                printer.printer(interpretation)
+                fout.write(")")
+                continue
+
             params = " ".join(
                 f"({quote(v.symbol_name())} {v.symbol_type().as_smtlib(funstyle=False)})"
                 for v in interpretation.formal_params
             )
-            fout.write(f"(define-fun {name} ({params}) {booltype} ")
+            fout.write(f"\n(define-fun {name} ({params}) {booltype} ")
             printer.printer(interpretation.function_body)
             fout.write(")")
 
