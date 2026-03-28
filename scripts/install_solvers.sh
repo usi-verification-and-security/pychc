@@ -24,6 +24,7 @@ install_z3() {
     [ -f "$DIR/$zip" ] || curl -L "$url" -o "$DIR/$zip"
     echo "Extracting Z3..."
     unzip -o "$DIR/$zip" -d "$DIR"
+    rm -rf "$DIR/$zip"
     export NEW_PATH="$NEW_PATH:$DIR/$name/bin"
 }
 
@@ -37,6 +38,7 @@ install_cvc5() {
     [ -f "$DIR/$file" ] || curl -L "$url" -o "$DIR/$file"
     echo "Extracting cvc5..."
     unzip -o "$DIR/$file" -d "$DIR/"
+    rm -rf "$DIR/$file"
     mv "$DIR/$name" "$DIR/$dir"
     export NEW_PATH="$NEW_PATH:$DIR/$dir/bin"
 }
@@ -51,6 +53,7 @@ install_cvc5_1.0.5() {
     [ -f "$DIR/$file" ] || curl -L "$url" -o "$DIR/$file"
     echo "Extracting old cvc5..."
     unzip -o "$DIR/$file" -d "$DIR/$dir"
+    rm -rf "$DIR/$file"
     export NEW_PATH="$NEW_PATH:$DIR/$dir"
 }
 
@@ -64,6 +67,7 @@ install_opensmt() {
     [ -f "$DIR/$file" ] || curl -L "$url" -o "$DIR/$file"
     echo "Extracting OpenSMT..."
     tar -xjf "$DIR/$file" -C "$DIR/$dir"
+    rm -rf "$DIR/$file"
     export NEW_PATH="$NEW_PATH:$DIR/$dir"
 }
 
@@ -77,6 +81,7 @@ install_opensmt_2.5.0() {
     [ -f "$DIR/$file" ] || curl -L "$url" -o "$DIR/$file"
     echo "Extracting OpenSMT..."
     tar -xjf "$DIR/$file" -C "$DIR/$dir"
+    rm -rf "$DIR/$file"
     export NEW_PATH="$NEW_PATH:$DIR/$dir"
 }
 
@@ -111,6 +116,7 @@ install_golem_release() {
     [ -f "$DIR/$file" ] || curl -L "$url" -o "$DIR/$file"
     echo "Extracting Golem..."
     tar -xjf "$DIR/$file" -C "$DIR/$dir"
+    rm -rf "$DIR/$file"
     export NEW_PATH="$NEW_PATH:$DIR/$dir"
 }
 
@@ -124,6 +130,7 @@ install_golem_0.4.0() {
     [ -f "$DIR/$file" ] || curl -L "$url" -o "$DIR/$file"
     echo "Extracting Golem..."
     tar -xjf "$DIR/$file" -C "$DIR/$dir"
+    rm -rf "$DIR/$file"
     export NEW_PATH="$NEW_PATH:$DIR/$dir"
 }
 
@@ -135,12 +142,16 @@ install_eldarica() {
     local url="https://github.com/uuverifiers/eldarica/releases/download/v${ver}/${file}"
     [ -f "$DIR/$file" ] || curl -L "$url" -o "$DIR/$file"
     echo "Extracting Eldarica..."
+    rm -rf $DIR/eldarica-${ver}
     unzip -o "$DIR/$file" -d "$DIR"
+    rm -rf "$DIR/$file"
+    [ -d $DIR/eldarica ] && mv $DIR/eldarica $DIR/eldarica-${ver}
+    rm -rf "$DIR/eldarica"
     export NEW_PATH="$NEW_PATH:$DIR/$dir"
 }
 
 install_carcara() {
-    cargo install --git https://github.com/ufmg-smite/carcara.git --rev b685c15 
+    cargo install --git https://github.com/ufmg-smite/carcara.git --rev b685c15
 }
 
 # if OLD_RELEASES is true, install older versions
@@ -154,7 +165,7 @@ if [ "$OLD_RELEASES" = true ]; then
 fi
 
 install_z3
-install_cvc5 
+install_cvc5
 install_opensmt
 install_golem
 install_eldarica

@@ -90,6 +90,7 @@ Other examples are provided in directory `examples`.
 - <a href="https://github.com/usi-verification-and-security/pychc/blob/master/examples/k-liveness.py">k-liveness.py</a> shows how to prototype the k-liveness and liveness2safety algorithms
 
 ## Installation
+PyCHC can be installed using standard tools and uv. More details on uv usage are given at the end of this section.
 
 ### Installing PyCHC
 
@@ -139,17 +140,62 @@ The old versions needed are:
 - OpenSMT: `2.5.0`
 - Eldarica: `2.0.9`
 
-And move the binaries to `pychc/tests/expected_bugs/old_binaries/`.
+And move the binaries to `tests/binaries/`.
+
+Create a .env.test file in your root folder that contains the exact paths to these specific solver binaries.
+Here is an example .env.test configuration:
+```bash
+CVC5_1_0_5_HOME=./tests/binaries/cvc5-1.0.5/bin
+ELDARICA_2_0_9_HOME=./tests/binaries/eldarica-2.0.9
+GOLEM_0_4_0_HOME=./tests/binaries/golem-0.4.0
+OPENSMT_2_5_0_HOME=./tests/binaries/opensmt-2.5.0
+CVC5_HOME=./tests/binaries/cvc5-1.3.2/bin
+ELDARICA_HOME=./tests/binaries/eldarica-2.2.1
+GOLEM_HOME=./tests/binaries/golem-50f3b1a/build
+OPENSMT_HOME=./tests/binaries/opensmt-2.9.2
+Z3_HOME=./tests/binaries/z3-4.15.4-x64-glibc-2.39/bin
+```
 
 **For x86_64 Linux platforms** the following does this for you.
+Install the `just` command. For ubuntu based OS run
 ```
-$ ./scripts/install_solvers.sh pychc/tests/expected_bugs/old_binaries/ --old-releases
+sudo apt-get install just
+```
+Then setup your testing enviroment and run all tests
+```
+just setup-test
+```
+This script installs the required solvers and creates the .env.test file.
+Then tun all tests.
+```
+just test
+```
+It is recommended to use just's tasks because they execute a cleaning procedure after they finished
+
+### Solvers dependecies
+Before you setup your enviroment make sure your system provides all the necessary dependencies:
+ - `curl`, `git` and `unzip` for fetching archives and binaries
+ - `build-essential`, `cmake`, `libgmp-dev`, `bison` and `flex` to build opensmt-2.9.2
+ - `cargo` to install carcara. Make sure ~/.cargo/bin is in your PATH variable enviroment. It is highly recommended to install via rustup because older versions of cargo may raise errors.
+ - `java` to run eldarica. Recommended java 11 or newer.
+
+ ### For uv users
+To install PyCHC as dependency in your project you can add it via cli
+```bash
+uv add "git+https://github.com/usi-verification-and-security/pychc.git"
+```
+or add it to your dependencies
+```
+[project]
+dependencies = [
+  pychc @  git+https://github.com/usi-verification-and-security/pychc.git
+]
 ```
 
-### Running all tests
-After having installed the old versions, all tests can be run with:
+Just is a utility tool already integrated in uv, there is no need to install it as third party.
+The above procedure remain the same, but run
 ```
-$ python -m pytest pychc/tests
+uv run just setup-test
+uv run just test
 ```
-
-
+uv does not manage external dependecies of the solvers, so the manual setup procedure is still required.

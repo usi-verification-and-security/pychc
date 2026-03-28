@@ -24,7 +24,7 @@ from pychc.chc_system import CHCSystem
 from pychc.shortcuts import Predicate, Apply, Clause
 from pychc.exceptions import PyCHCInvalidSystemException
 
-from pychc.tests.common import reset_pysmt_env
+from common import golem_solver, reset_pysmt_env
 
 
 def run_chc_solver(test_func):
@@ -41,9 +41,7 @@ def run_chc_solver(test_func):
             assert not clause.is_quantifier() or clause.is_forall()
             assert clause.get_free_variables().issubset(sys.get_predicates())
 
-        from pychc.solvers.golem import GolemSolver
-
-        solver = GolemSolver()
+        solver = golem_solver()
         solver.load_system(sys)
         solver.solve()
 

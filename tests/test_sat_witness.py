@@ -24,33 +24,29 @@ from pysmt.typing import INT
 from pychc.chc_system import CHCSystem
 from pychc.shortcuts import Predicate, Apply, Clause
 
-from pychc.tests.common import reset_pysmt_env
+from common import cvc5_solver, eldarica_solver, golem_solver, opensmt_solver, reset_pysmt_env, z3_chc_solver, z3_smt_solver
 
 from pychc.solvers.witness import Status, ProofFormat
-from pychc.solvers.eldarica import EldaricaSolver
-from pychc.solvers.golem import GolemSolver
-from pychc.solvers.z3 import Z3CHCSolver, Z3SMTSolver
-from pychc.solvers.opensmt import OpenSMTSolver
-from pychc.solvers.cvc5 import CVC5Solver
+
 from pychc.solvers.carcara import Carcara
 
 
 ALL_OPTIONS = [
-    (EldaricaSolver, OpenSMTSolver, None),
-    (EldaricaSolver, Z3SMTSolver, None),
-    (EldaricaSolver, CVC5Solver, ProofFormat.ALETHE),
-    (EldaricaSolver, CVC5Solver, ProofFormat.LFSC),
-    (EldaricaSolver, CVC5Solver, ProofFormat.DOT),
-    (GolemSolver, OpenSMTSolver, None),
-    (GolemSolver, Z3SMTSolver, None),
-    (GolemSolver, CVC5Solver, ProofFormat.ALETHE),
-    (GolemSolver, CVC5Solver, ProofFormat.LFSC),
-    (GolemSolver, CVC5Solver, ProofFormat.DOT),
-    (Z3CHCSolver, OpenSMTSolver, None),
-    (Z3CHCSolver, Z3SMTSolver, None),
-    (Z3CHCSolver, CVC5Solver, ProofFormat.ALETHE),
-    (Z3CHCSolver, CVC5Solver, ProofFormat.LFSC),
-    (Z3CHCSolver, CVC5Solver, ProofFormat.DOT),
+    (eldarica_solver, opensmt_solver, None),
+    (eldarica_solver, z3_smt_solver, None),
+    (eldarica_solver, cvc5_solver, ProofFormat.ALETHE),
+    (eldarica_solver, cvc5_solver, ProofFormat.LFSC),
+    (eldarica_solver, cvc5_solver, ProofFormat.DOT),
+    (golem_solver, opensmt_solver, None),
+    (golem_solver, z3_smt_solver, None),
+    (golem_solver, cvc5_solver, ProofFormat.ALETHE),
+    (golem_solver, cvc5_solver, ProofFormat.LFSC),
+    (golem_solver, cvc5_solver, ProofFormat.DOT),
+    (z3_chc_solver, opensmt_solver, None),
+    (z3_chc_solver, z3_smt_solver, None),
+    (z3_chc_solver, cvc5_solver, ProofFormat.ALETHE),
+    (z3_chc_solver, cvc5_solver, ProofFormat.LFSC),
+    (z3_chc_solver, cvc5_solver, ProofFormat.DOT),
 ]
 
 

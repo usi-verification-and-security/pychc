@@ -1,5 +1,6 @@
 setuptools
 --pre
 pysmt
+python-dotenv
 
 pytest

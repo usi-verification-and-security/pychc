@@ -26,24 +26,23 @@ from pychc.shortcuts import Predicate, Apply, Clause
 from pychc.exceptions import PyCHCSolverException
 
 from pychc.solvers.witness import ProofFormat, Status
-from pychc.tests.common import reset_pysmt_env
+from common import reset_pysmt_env, z3_chc_solver
 
-from pychc.solvers.golem import GolemSolver
-from pychc.solvers.eldarica import EldaricaSolver
-from pychc.solvers.z3 import Z3CHCSolver
 from pychc.solvers.carcara import Carcara
 
+from common import eldarica_solver, golem_solver
+
 ALL_OPTIONS = [
-    (GolemSolver, ProofFormat.ALETHE, True),
-    (GolemSolver, ProofFormat.LEGACY, True),
-    (GolemSolver, ProofFormat.INTERMEDIATE, True),
-    (GolemSolver, ProofFormat.DOT, False),
-    (EldaricaSolver, None, True),
-    (EldaricaSolver, ProofFormat.ALETHE, False),
-    (EldaricaSolver, ProofFormat.LEGACY, False),
-    (Z3CHCSolver, None, True),
-    (Z3CHCSolver, ProofFormat.ALETHE, False),
-    (Z3CHCSolver, ProofFormat.LEGACY, False),
+    (golem_solver, ProofFormat.ALETHE, True),
+    (golem_solver, ProofFormat.LEGACY, True),
+    (golem_solver, ProofFormat.INTERMEDIATE, True),
+    (golem_solver, ProofFormat.DOT, False),
+    (eldarica_solver, None, True),
+    (eldarica_solver, ProofFormat.ALETHE, False),
+    (eldarica_solver, ProofFormat.LEGACY, False),
+    (z3_chc_solver, None, True),
+    (z3_chc_solver, ProofFormat.ALETHE, False),
+    (z3_chc_solver, ProofFormat.LEGACY, False),
 ]
 
 

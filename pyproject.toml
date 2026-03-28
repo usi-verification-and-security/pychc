@@ -1,0 +1,39 @@
+[project]
+name = "pychc"
+version = "0.1.0"
+description = "PyCHC is a solver-agnostic Python library for the design and certified solving of systems of Constrained Horn Clauses (CHC)."
+readme = { file = "README.md", content-type = "text/markdown" }
+dependencies = [
+    "pip>=26.0.1", # pysmt need it to install some dependencies
+    "pysmt",
+    "setuptools",
+    "python-dotenv"
+]
+
+[dependency-groups]
+dev = [
+    "pytest",
+]
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[build-system]
+requires = ["uv_build>=0.8.5,<0.9.0"]
+build-backend = "uv_build"
+
+[tool.pytest.ini_options]
+minversion = "6.0"
+addopts = "-ra -q"
+testpaths = ["tests"]
+pythonpath = ["src"]
+
+[tool.pytest_env]
+CVC5_PATH_1_0_5="./tests/expected_bugs/old_binaries/cvc5-1.0.5/bin"
+ELDARICA_PATH_2_0_9="./tests/expected_bugs/old_binaries/eldarica-2.0.9"
+GOLEM_PATH_0_4_0="./tests/expected_bugs/old_binaries/golem-0.9.0"
+OLD_OPENSMT_2_5_0="./tests/expected_bugs/old_binaries/opensmt-2.5.0"
+CVC5_PATH="./tests/expected_bugs/old_binaries/cvc5-1.0.5/bin"
+ELDARICA_PATH="./tests/expected_bugs/old_binaries/eldarica-2.0.9"
+GOLEM_PATH="./tests/expected_bugs/old_binaries/golem-0.9.0"
+OPENSMT_PATH="./tests/expected_bugs/old_binaries/opensmt-2.5.0"

@@ -27,9 +27,8 @@ from pysmt.exceptions import PysmtTypeError
 from pychc.chc_system import CHCSystem
 from pychc.exceptions import PyCHCInvalidResultException
 from pychc.shortcuts import Predicate, Apply, Clause, Mod, IntDiv
-from pychc.solvers.z3 import Z3CHCSolver, Z3SMTSolver
 from pychc.solvers.witness import Status
-from pychc.tests.common import reset_pysmt_env
+from common import reset_pysmt_env, z3_chc_solver, z3_smt_solver
 
 
 @reset_pysmt_env
@@ -71,9 +70,9 @@ def run_solver(test_func):
         assert sys1.get_predicates() == sys.get_predicates()
         assert sys1.get_clauses() == sys.get_clauses()
 
-        chc_solver = Z3CHCSolver(global_guidance=True)
+        chc_solver = z3_chc_solver(global_guidance=True)
         chc_solver.load_system(sys)
-        validator = Z3SMTSolver(logic=LIA)
+        validator = z3_smt_solver(logic=LIA)
         chc_solver.set_smt_validator(validator)
         status = chc_solver.solve()
         assert status == Status.SAT
