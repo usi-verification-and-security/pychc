@@ -1,0 +1,31 @@
+[build-system]
+requires = ["setuptools>=70"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "pychc"
+version = "0.1.0"
+description = "A solver-agnostic Python library for the design and certified solving of Constrained Horn Clause systems"
+readme = "README.md"
+license = "Apache-2.0"
+authors = [
+    { name = "Formal Verification and Security Lab - USI" },
+    { name = "Anna Becchi", email = "abecchi@usi.ch" }
+]
+requires-python = ">=3.12"
+dependencies = [
+    "PySMT>=0.9.1.dev337",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest",
+]
+
+[project.urls]
+Homepage = "https://verify.inf.usi.ch/pychc"
+Repository = "https://github.com/usi-verification-and-security/pychc"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["pychc*"]
