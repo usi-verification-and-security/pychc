@@ -33,7 +33,6 @@ from pychc.exceptions import (
     PyCHCInvalidResultException,
     PyCHCSolverException,
     PyCHCInternalException,
-    PyCHCUnknownResultException,
 )
 
 
@@ -169,17 +168,14 @@ class CHCSolver(ABC):
         self.system = chc_system
 
     def get_input_file(self) -> Path:
-        # This method is possibly overridden by subclasses
-        # to add a (get-model) command.
         input_file = self.system.get_smt2file()
         return input_file
 
     def solve(self, timeout: Optional[int] = None, validate=False) -> Status:
         """
-        Run the solver on the provided CHC system.
+        Run the solver on the loaded CHC system.
         Stores solving status and witness internally.
-        If validate=True, the witness is validated using the configured
-        SMT validator or proof checker.
+        If `validate` is True, the witness is validated using the configured SMT validator or proof checker.
         Otherwise, the witness is not parsed and can be obtained later.
         """
         if not self.system:
@@ -191,9 +187,8 @@ class CHCSolver(ABC):
 
     def run(self, path: Path, timeout: Optional[int] = None, validate=False) -> Status:
         """
-        Run the solver on the provided CHC system file.
-        If the output is sat + model or unsat + proof, it will be
-        parsed and stored internally.
+        Run the solver on `path` input file.
+        If the output is sat + model or unsat + proof, it will be parsed and stored internally.
         Otherwise, PyCHCUnknownResultException is raised.
         """
         if path is None or not path.is_file():
@@ -238,8 +233,7 @@ class CHCSolver(ABC):
 
     def get_witness(self) -> Optional[Witness]:
         """
-        Parses the output to obtain a witness.
-        Must be called after a `solve()`.
+        Parses the raw output to obtain a witness. Must be called after solve() or run()
         """
         if self._witness:
             return self._witness
@@ -264,7 +258,7 @@ class CHCSolver(ABC):
 
     def validate_witness(self, timeout: Optional[int] = None) -> None:
         """
-        Obtains and validates the witness.
+        Obtains and validates the witness against the loaded CHC system. Must be called after solve() or run().
         Raises PyCHCInvalidResultException if the witness is invalid.
         """
         if not self.system:
@@ -293,6 +287,6 @@ class CHCSolver(ABC):
 
     def get_status(self) -> Optional[Status]:
         """
-        Return the solving status. Must be called after `solve()`.
+        Return the solving status. Must be called after solve() or run().
         """
         return self._status

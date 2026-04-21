@@ -355,8 +355,7 @@ class SMTSolver(SmtLibSolver):
     def run(self, path: Path, timeout: Optional[int] = None) -> Status:
         """
         Run the solver on the provided SMT-LIBv2 file.
-        If the output is sat/unsat + something, the status will
-        parsed and stored internally.
+        If the output is sat/unsat, the status will be stored internally.
         If unsat, the following output is stored as the proof.
         Otherwise, PyCHCUnknownResultException is raised.
         """

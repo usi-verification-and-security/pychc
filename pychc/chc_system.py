@@ -22,7 +22,7 @@ from pathlib import Path
 import tempfile
 from typing import Optional
 
-from pysmt.shortcuts import ForAll, And, Not, FALSE
+from pysmt.shortcuts import ForAll, And
 from pysmt.logics import Logic
 from pysmt.fnode import FNode
 from pysmt.smtlib.printers import SmtPrinter
@@ -49,7 +49,13 @@ class CHCSystem:
 
     @classmethod
     def load_from_file(cls, path: Path, logic: Optional[Logic] = None) -> CHCSystem:
-        """Load a CHC system from an SMT-LIB file."""
+        """
+        Load a CHC system from an SMT-LIB file.
+
+        :param path: path to the SMT-LIB file containing the CHC system.
+        :param logic: (optional) logic of the system. If None, it will be inferred from the clauses.
+        :return: a CHCSystem instance representing the system in the file.
+        """
         from pychc.parser import CHCSmtLibParser
         from pysmt.oracles import get_logic
 
@@ -66,16 +72,22 @@ class CHCSystem:
         clauses = list(map(get_content, script.filter_by_command_name("assert")))
 
         # determine logic
+        def get_clause_logic(clause):
+            if clause.is_forall():
+                return get_logic(clause.arg(0))
+            return get_logic(clause)
+
         if logic is None:
-            logic = max(map(get_logic, clauses))
+            logic = max(map(get_clause_logic, clauses))
 
         # create system
         sys = cls(logic)
-        [sys.add_predicate(pred) for pred in predicates]
-        [sys.add_clause(clause) for clause in clauses]
+        for pred in predicates: sys.add_predicate(pred)
+        for clause in clauses: sys.add_clause(clause)
 
-        # do not set sys.smt2file.
-        # sys.smt2file must be created with PySMT serializer
+        # Although `path` is a valid SMT-LIB file containing the system,
+        # do not cache it as the `sys.smt2file`.
+        # `sys.smt2file` must be created with PySMT serializer
         # to remove comments and ensuring one last (check-sat)
 
         return sys
@@ -93,8 +105,9 @@ class CHCSystem:
     def add_predicate(self, pred: FNode) -> None:
         """
         Register a predicate symbol with its signature.
+        This invalidates the current solving status, witness, and SMT-LIB file, if any.
 
-        :param pred: a pysmt Symbol of type FunctionType
+        :param pred: a pysmt Symbol of type FunctionType, or a Boolean variable
         """
         self.invalidate_data()
         try:
@@ -121,10 +134,12 @@ class CHCSystem:
 
     def add_clause(self, clause: FNode) -> int:
         """
-        Add a CHC clause.
+        Add a new CHC clause and returns its index.
+        This invalidates the current solving status, witness, and SMT-LIB file, if any.
 
         :param clause: a pysmt FNode representing a CHC clause.
-        It must have no free variables and use a compliant logic.
+            All free variables that are not declared predicates will be universally quantified.
+        :return: the index of the added clause in the system.
         """
         from pysmt.oracles import get_logic
 
@@ -167,15 +182,25 @@ class CHCSystem:
         return idx
 
     def remove_clause(self, clause_idx: int) -> None:
+        """
+        Remove the clause with the given index.
+        This invalidates the current solving status, witness, and SMT-LIB file, if any.
+
+        :param clause_idx: the index of the clause to remove. It must be <= len(get_clauses()).
+        """
         self.invalidate_data()
         del self.clauses[clause_idx]
 
     def get_clauses(self) -> list[FNode]:
+        """
+        Get the list of clauses in the system.
+
+        :return: a list of FNodes representing the clauses in the system.
+        """
         return self.clauses
 
     ## Witness syntactic consistency checks
     def _check_sat_witness_consistency(self, witness: SatWitness) -> bool:
-        """Check whether the given SAT witness is syntactically consistent."""
         from pysmt.substituter import FunctionInterpretation
 
         for pred in self.get_predicates():
@@ -203,7 +228,6 @@ class CHCSystem:
         return True
 
     def _check_unsat_witness_consistency(self, witness: UnsatWitness) -> bool:
-        """Check whether the given UNSAT witness is syntactically consistent."""
         raise NotImplementedError()
 
     def check_witness_consistency(self, witness: Witness) -> bool:
@@ -211,7 +235,6 @@ class CHCSystem:
         Check whether the given witness is *syntactically* consistent with the system.
 
         :param witness: a Witness containing the interpretations for the predicates
-
         """
         if isinstance(witness, SatWitness):
             return self._check_sat_witness_consistency(witness)
@@ -220,7 +243,7 @@ class CHCSystem:
         return True
 
     ## Witness semantic validation
-    def _get_validate_model_queries(self, model: SatWitness) -> set[FNode]:
+    def _get_validate_model_queries(self, model: SatWitness) -> list[FNode]:
         """
         Given a SAT witness/model, produce the set of queries to validate it.
 
@@ -261,15 +284,27 @@ class CHCSystem:
         smt_validator: SMTSolver,
         timeout: Optional[int] = None,
     ):
+        """
+        Validate a SAT witness by checking that it satisfies all clauses in the system.
+        A PyCHCInvalidResultException is raised if the witness is invalid.
+
+        :param witness: a SatWitness containing the interpretations for the predicates
+        :param smt_validator: an SMT solver to use for validating the witness
+        :param timeout: (optional) timeout in seconds for the SMT solver during validation
+        """
         from pysmt.oracles import get_logic
 
         queries = self._get_validate_model_queries(witness)
 
+        # Set the smt_validator logic, if not already set.
         logic = max(map(get_logic, queries))
         if not smt_validator.get_logic():
             if any(logic <= l for l in smt_validator.LOGICS):
                 smt_validator.set_logic(logic)
             else:
+                # If smt_validator does not support the logic of the queries,
+                # try to set the system's logic. It might be due to quantifiers in the witness,
+                # which will be removed later.
                 smt_validator.set_logic(self.get_logic())
 
         smt_validator.set_timeout(timeout)
@@ -277,33 +312,35 @@ class CHCSystem:
         for i, query in enumerate(queries):
             query_logic = get_logic(query)
             known_logic = query_logic <= smt_validator.get_logic()
+
+            # If the smt_validator does not support the logic of the query, try to remove quantifiers.
             if not known_logic and query_logic.is_quantified():
                 # attempt to eliminate quantifiers
                 try:
                     from pysmt.shortcuts import QuantifierEliminator
-
                     logging.warning(
                         "Performing quantifier elimination for witness validation."
                     )
                     qe = QuantifierEliminator(name="z3")
                     query = qe.eliminate_quantifiers(query)
                 except Exception as e:
+                    # TODO: raise a specific exception for quantifier elimination failure?
                     logging.warning(
                         "Quantifier elimination failed, cannot validate witness."
                     )
 
+            # perform actual validation of the query
             if not smt_validator.is_valid(query):
                 logging.error(f"Falsified clause: {self.get_clauses()[i].serialize(threshold=6)}")
                 logging.error(f"Interpreted clause is not valid: {query.serialize(threshold=6)}")
                 raise PyCHCInvalidResultException(
                     f"Invalid CHC model. Clause {i} is falsified. See satisfiable query: {smt_validator.get_smt2_file()}"
                 )
+            # if the smt_validator supports proof checking, validate the proof as well
             if smt_validator.proof_checker:
                 smt_validator.validate_proof()
-            # else:
-            #     logging.warning(
-            #         f"No proof checker set for SMT solver {smt_validator.NAME}, skipping proof validation"
-            #     )
+
+        # Here, no invalidity was found.
         self.status = Status.SAT
         self.witness = witness
 
@@ -313,6 +350,14 @@ class CHCSystem:
         proof_checker: proof_checker.ProofChecker,
         timeout: Optional[int] = None,
     ):
+        """
+        Validate an UNSAT witness by checking the proof using the provided proof checker.
+        A PyCHCInvalidResultException is raised if the proof is invalid.
+
+        :param witness: an UnsatWitness containing the proof for the UNSAT result
+        :param proof_checker: a ProofChecker to use for validating the proof
+        :param timeout: (optional) timeout in seconds for the proof checker during validation
+        """
         smt2file = self.get_smt2file()
         proof_checker.validate_witness(witness, smt2file, timeout=timeout)
         self.status = Status.UNSAT
@@ -324,16 +369,19 @@ class CHCSystem:
         """
         Learn new clauses from the given witness.
 
+        :param clause_id: the index of the clause to strengthen. It must be <= len(get_clauses()).
+          If the clause is not a quantified implication (eg, it is a fact), this has no effect
+          and `clause_id` is returned.
         :param witness: a Witness containing the interpretations for the predicates
+        :return: the index of the (possibly new) clause in the system.
         """
-        from pychc.shortcuts import Clause, Apply
-        from pysmt.oracles import get_logic
+        from pychc.shortcuts import Clause
 
         clause = self.clauses[clause_id]
 
         if not clause.is_forall() or not clause.arg(0).is_implies():
             logging.info("Can only strengthen quantified implication clauses.")
-            return
+            return clause_id
 
         # prepare maps for interpreting a formula
         interpretations = {
@@ -359,6 +407,10 @@ class CHCSystem:
         return new_clause_id
 
     def get_smt2file(self) -> Path:
+        """ 
+        Get the cached path to the SMT-LIB file representing the system.
+        If the file does not exist yet, it is created by serializing the system to it.
+        """
         if self.smt2file is None or not self.smt2file.exists():
             self.smt2file = Path(
                 tempfile.NamedTemporaryFile("w", suffix=".smt2", delete=False).name
@@ -368,14 +420,14 @@ class CHCSystem:
 
     def serialize(self, out_path: Path) -> Path:
         """
-        Serialize the system to SMT-LIB at `out_path`.
-
+        Serialize the system to SMT-LIB.
         Emits:
         - `(set-logic HORN)`
         - `(declare-fun <pred> (<arg_sorts> ) <return_sort>)` for each predicate
         - `(assert <clause>)` for each clause
         - `(check-sat)` at the end
 
+        :param out_path: the Path where to write the SMT-LIB file
         :return: the Path where the system was written
         """
         with out_path.open("w") as f:
@@ -406,5 +458,3 @@ class CHCSystem:
         self.smt2file = out_path
         return out_path
 
-
-# eoc CHCSystem
