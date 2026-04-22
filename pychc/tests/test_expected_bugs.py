@@ -76,6 +76,19 @@ def test_z3_2_issue():
 
 ### Eldarica
 
+@reset_pysmt_env
+def test_eldarica_issue2():
+    # https://github.com/uuverifiers/eldarica/issues/51
+
+    test = bench_dir / "eldarica_fail.smt2"
+    sys = CHCSystem.load_from_file(Path(test))
+    validator = CVC5Solver(proof_checker=Carcara())
+
+    eldarica = EldaricaSolver()
+    eldarica.run(test)
+    with pytest.raises(PyCHCSolverException):
+        sys.validate_sat_model(eldarica.get_witness(), validator)
+
 
 @reset_pysmt_env
 def test_eldarica_issue():
@@ -91,11 +104,10 @@ def test_eldarica_issue():
     with pytest.raises(PyCHCSolverException):
         sys.validate_sat_model(old_eldarica.get_witness(), validator)
 
-    # Issue is fixed in the latest Eldarica version
+    # In this specific test case, the issue is fixed in the latest Eldarica version
     eldarica = EldaricaSolver()
     eldarica.run(test)
     sys.validate_sat_model(eldarica.get_witness(), validator)
-
 
 ### Golem
 
