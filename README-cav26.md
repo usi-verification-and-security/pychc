@@ -127,7 +127,7 @@ File `pychc/tests/test_expected_bugs.py` includes test cases that monitor such i
 | Golem     | https://github.com/usi-verification-and-security/golem/issues/161 | Open  | `test_golem_proof_production_issue()`
 | Z3-Spacer | https://github.com/Z3Prover/z3/issues/6716                        | Open  | `test_z3_1_issue(), test_z3_1_model_issue(), test_z3_2_issue()`
 | CVC5      | https://github.com/cvc5/cvc5/issues/9770                          | Fixed | `test_cvc5_1_issue()`
-| Golem     | http://github.com/usi-verification-and-security/golem/issues/29   | Fixed | `test_golem_1_issue()`
+| Golem     | https://github.com/usi-verification-and-security/golem/issues/29   | Fixed | `test_golem_1_issue()`
 | Golem     | https://github.com/usi-verification-and-security/golem/issues/27  | Fixed | `test_golem_2_issue()`
 | OpenSMT   | https://github.com/usi-verification-and-security/opensmt/issues/613 | Fixed | `test_opensmt_issue()`
 
@@ -201,12 +201,14 @@ python scripts/eval_chccomp.py --solver z3 scripts/z3_fails_LIA-Lin.set
 ```
 In these tests, Z3 produces an invalid model. The log also indicates which clause was falsified in the original model
 and provides the path to a `.smt2` file with a satisfiable problem (showing that the clause is not valid).
+Output summary should report ` -- validated: 0/7`.
 
 The 12 Eldarica failures can be reproduced by running
 ```bash
 python scripts/eval_chccomp.py --solver eldarica scripts/eldarica_fails.set
 ```
 In these tests, Eldarica returns the model as a non-well-formed formula.
+Output summary should report ` -- validated: 0/12`.
 
 ### Running PyCHC on CHC-COMP25 benchmarks [1h]
 
