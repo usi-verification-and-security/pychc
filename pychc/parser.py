@@ -100,26 +100,29 @@ def scan_commands(text: str) -> list[str]:
 
 def decide_result(text: str) -> tuple[Status, str]:
     """
-    Decide the solving result (SAT/UNSAT/UNKNOWN) from first line.
-    Returns the status and the remaining output.
-    If first line is not sat/unsat/unknown, raises PyCHCUnknownResultException.
+    Decide the solving result (SAT/UNSAT/UNKNOWN) from the raw solver output.
+    Scan the output line-by-line and look for a single line that is exactly
+    "sat", "unsat", or "unknown". This allows solvers that emit logging or
+    other information before the verdict.
+
+    Returns the status and the remaining output after the verdict line.
+    If no verdict line is found, raises PyCHCUnknownResultException.
     """
-    # status is first line, the rest is self._raw_output
-    status, *rest = text.splitlines()
-    if status == "sat":
-        s = Status.SAT
-        # also try to remove open-close brackets
-        if len(rest) > 1 and rest[0].strip() == "(" and rest[-1].strip() == ")":
-            rest = rest[1:-1]
-    elif status == "unsat":
-        s = Status.UNSAT
-    elif status == "unknown":
-        s = Status.UNKNOWN
-    else:
-        if "error" in text:
-            raise PyCHCSolverException(f"Solver reported an error: {text}")
-        raise PyCHCUnknownResultException(
-            f"Could not understand solver output status: {text}"
-        )
-    out = "\n".join(rest).strip()
-    return s, out
+    lines = text.splitlines()
+    valid_statuses = {"sat": Status.SAT, "unsat": Status.UNSAT, "unknown": Status.UNKNOWN}
+
+    for i, line in enumerate(lines):
+        line = line.strip()
+        if line in valid_statuses:
+            s = valid_statuses[line]
+            rest = lines[i + 1:]
+            if s == Status.SAT and len(rest) > 1 and rest[0].strip() == "(" and rest[-1].strip() == ")":
+                rest = rest[1:-1]
+            out = "\n".join(rest).strip()
+            return s, out
+
+    if "error" in text.lower():
+        raise PyCHCSolverException(f"Solver reported an error: {text}")
+    raise PyCHCUnknownResultException(
+        f"Could not understand solver output status: {text}"
+    )
