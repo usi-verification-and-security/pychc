@@ -22,6 +22,9 @@ dev = [
     "pytest",
 ]
 
+[project.scripts]
+pychc = "pychc.__main__:main"
+
 [project.urls]
 Homepage = "https://verify.inf.usi.ch/pychc"
 Repository = "https://github.com/usi-verification-and-security/pychc"
